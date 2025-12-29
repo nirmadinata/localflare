@@ -1,14 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Layers01Icon, Loading03Icon } from "@hugeicons/core-free-icons"
+import { Layers01Icon } from "@hugeicons/core-free-icons"
 import { bindingsApi } from "@/lib/api"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/page-header"
+import { StatsCard, StatsCardGroup } from "@/components/ui/stats-card"
+import { DataTable, DataTableLoading, type Column } from "@/components/ui/data-table"
+import { EmptyState } from "@/components/ui/empty-state"
 
 export function DOExplorer() {
   const { data: bindings, isLoading } = useQuery({
@@ -16,14 +13,39 @@ export function DOExplorer() {
     queryFn: bindingsApi.getAll,
   })
 
+  const doColumns: Column<Record<string, unknown>>[] = [
+    {
+      key: "binding",
+      header: "Binding",
+      render: (value) => (
+        <div className="flex items-center gap-2">
+          <HugeiconsIcon icon={Layers01Icon} className="size-4 text-do" strokeWidth={2} />
+          <span className="font-medium text-sm">{String(value)}</span>
+        </div>
+      ),
+    },
+    {
+      key: "class_name",
+      header: "Class Name",
+      render: (value) => <span className="font-mono text-xs">{String(value)}</span>,
+    },
+    {
+      key: "script_name",
+      header: "Script",
+      render: (value) => (
+        value ? (
+          <span className="text-xs text-muted-foreground">{String(value)}</span>
+        ) : (
+          <span className="text-xs text-muted-foreground italic">Local</span>
+        )
+      ),
+    },
+  ]
+
   if (isLoading) {
     return (
-      <div className="p-6 flex items-center justify-center">
-        <HugeiconsIcon
-          icon={Loading03Icon}
-          className="size-6 animate-spin text-muted-foreground"
-          strokeWidth={2}
-        />
+      <div className="p-6">
+        <DataTableLoading />
       </div>
     )
   }
@@ -33,61 +55,58 @@ export function DOExplorer() {
   if (!durableObjects.length) {
     return (
       <div className="p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <HugeiconsIcon
-                icon={Layers01Icon}
-                className="size-5 text-yellow-500"
-                strokeWidth={2}
-              />
-              Durable Objects
-            </CardTitle>
-            <CardDescription>
-              No Durable Objects configured in wrangler.toml
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <PageHeader
+          icon={Layers01Icon}
+          iconColor="text-do"
+          title="Durable Objects"
+          description="Manage your Durable Objects classes"
+        />
+        <EmptyState
+          icon={Layers01Icon}
+          title="No Durable Objects configured"
+          description="Add a Durable Object binding to your wrangler.toml to get started"
+          className="mt-8"
+        />
       </div>
     )
   }
 
   return (
     <div className="h-full flex flex-col">
-      <div className="p-4 border-b">
-        <h2 className="text-base font-semibold flex items-center gap-2">
-          <HugeiconsIcon
+      {/* Header */}
+      <div className="p-6 border-b border-border">
+        <PageHeader
+          icon={Layers01Icon}
+          iconColor="text-do"
+          title="Durable Objects"
+          description="Manage your Durable Objects classes"
+        />
+
+        {/* Stats */}
+        <StatsCardGroup className="mt-6">
+          <StatsCard
             icon={Layers01Icon}
-            className="size-5 text-yellow-500"
-            strokeWidth={2}
+            iconColor="text-do"
+            label="DO Classes"
+            value={durableObjects.length}
           />
-          Durable Objects
-        </h2>
+        </StatsCardGroup>
       </div>
 
-      <div className="flex-1 p-4 overflow-auto">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {durableObjects.map((obj) => (
-            <Card key={obj.binding}>
-              <CardHeader>
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <HugeiconsIcon
-                    icon={Layers01Icon}
-                    className="size-4 text-yellow-500"
-                    strokeWidth={2}
-                  />
-                  {obj.binding}
-                </CardTitle>
-                <CardDescription>Class: {obj.class_name}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xs text-muted-foreground">
-                  Durable Object inspection coming soon. You can interact with DO
-                  instances through your worker's fetch handler.
-                </p>
-              </CardContent>
-            </Card>
-          ))}
+      {/* Content */}
+      <div className="flex-1 overflow-auto p-6">
+        <DataTable
+          columns={doColumns}
+          data={durableObjects as unknown as Record<string, unknown>[]}
+          emptyIcon={Layers01Icon}
+          emptyTitle="No Durable Objects"
+          emptyDescription="Configure Durable Objects in your wrangler.toml"
+        />
+
+        <div className="mt-6 p-4 bg-muted/50 rounded-lg border border-border">
+          <p className="text-sm text-muted-foreground">
+            Durable Object inspection coming soon. You can interact with DO instances through your worker's fetch handler.
+          </p>
         </div>
       </div>
     </div>

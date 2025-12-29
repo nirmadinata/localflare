@@ -3,18 +3,15 @@ import { useQuery, useMutation } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   TaskDone01Icon,
-  Loading03Icon,
   Sent02Icon,
 } from "@hugeicons/core-free-icons"
 import { queuesApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { PageHeader } from "@/components/ui/page-header"
+import { StatsCard, StatsCardGroup } from "@/components/ui/stats-card"
+import { DataTableLoading } from "@/components/ui/data-table"
+import { EmptyState } from "@/components/ui/empty-state"
 import { cn } from "@/lib/utils"
 
 export function QueuesExplorer() {
@@ -48,170 +45,169 @@ export function QueuesExplorer() {
 
   if (isLoading) {
     return (
-      <div className="p-6 flex items-center justify-center">
-        <HugeiconsIcon
-          icon={Loading03Icon}
-          className="size-6 animate-spin text-muted-foreground"
-          strokeWidth={2}
-        />
+      <div className="p-6">
+        <DataTableLoading />
       </div>
     )
   }
 
   const producers = queues?.producers ?? []
+  const consumers = queues?.consumers ?? []
 
   if (!producers.length) {
     return (
       <div className="p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <HugeiconsIcon
-                icon={TaskDone01Icon}
-                className="size-5 text-pink-500"
-                strokeWidth={2}
-              />
-              Queues
-            </CardTitle>
-            <CardDescription>
-              No Queues configured in wrangler.toml
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <PageHeader
+          icon={TaskDone01Icon}
+          iconColor="text-queues"
+          title="Queues"
+          description="Manage your Cloudflare Queues"
+        />
+        <EmptyState
+          icon={TaskDone01Icon}
+          title="No Queues configured"
+          description="Add a Queue binding to your wrangler.toml to get started"
+          className="mt-8"
+        />
       </div>
     )
   }
 
   return (
     <div className="h-full flex flex-col">
-      <div className="p-4 border-b">
-        <h2 className="text-base font-semibold flex items-center gap-2">
-          <HugeiconsIcon
+      {/* Header */}
+      <div className="p-6 border-b border-border">
+        <PageHeader
+          icon={TaskDone01Icon}
+          iconColor="text-queues"
+          title="Queues"
+          description="Manage your Cloudflare Queues"
+        />
+
+        {/* Stats */}
+        <StatsCardGroup className="mt-6">
+          <StatsCard
             icon={TaskDone01Icon}
-            className="size-5 text-pink-500"
-            strokeWidth={2}
+            iconColor="text-queues"
+            label="Producers"
+            value={producers.length}
           />
-          Queues
-        </h2>
+          <StatsCard
+            icon={TaskDone01Icon}
+            iconColor="text-muted-foreground"
+            label="Consumers"
+            value={consumers.length}
+          />
+        </StatsCardGroup>
       </div>
 
       <div className="flex-1 flex min-h-0">
         {/* Queue List */}
-        <div className="w-64 border-r flex flex-col">
-          <div className="p-2 border-b text-xs font-medium text-muted-foreground uppercase">
-            Producers
+        <div className="w-56 border-r border-border flex flex-col bg-muted/30">
+          <div className="p-3 border-b border-border">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Producers
+            </span>
           </div>
-          <div className="p-2 space-y-1">
-            {producers.map((producer) => (
-              <button
-                key={producer.binding}
-                onClick={() => setSelectedQueue(producer.binding)}
-                className={cn(
-                  "w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2",
-                  selectedQueue === producer.binding
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-muted"
-                )}
-              >
-                <HugeiconsIcon
-                  icon={TaskDone01Icon}
-                  className="size-4"
-                  strokeWidth={2}
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="truncate">{producer.binding}</div>
-                  <div className="text-[10px] opacity-60 truncate">
-                    {producer.queue}
+          <ScrollArea className="flex-1">
+            <div className="p-2 space-y-1">
+              {producers.map((producer) => (
+                <button
+                  key={producer.binding}
+                  onClick={() => setSelectedQueue(producer.binding)}
+                  className={cn(
+                    "w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors",
+                    selectedQueue === producer.binding
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <HugeiconsIcon
+                    icon={TaskDone01Icon}
+                    className={cn("size-4", selectedQueue === producer.binding && "text-queues")}
+                    strokeWidth={2}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate">{producer.binding}</div>
+                    <div className="text-[10px] opacity-60 truncate">{producer.queue}</div>
                   </div>
-                </div>
-              </button>
-            ))}
-          </div>
+                </button>
+              ))}
+            </div>
 
-          {queues?.consumers && queues.consumers.length > 0 && (
-            <>
-              <div className="p-2 border-t border-b text-xs font-medium text-muted-foreground uppercase">
-                Consumers
-              </div>
-              <div className="p-2 space-y-1">
-                {queues.consumers.map((consumer) => (
-                  <div
-                    key={consumer.queue}
-                    className="px-2 py-1.5 rounded text-xs flex items-center gap-2 text-muted-foreground"
-                  >
-                    <HugeiconsIcon
-                      icon={TaskDone01Icon}
-                      className="size-4"
-                      strokeWidth={2}
-                    />
-                    {consumer.queue}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+            {consumers.length > 0 && (
+              <>
+                <div className="p-3 border-t border-b border-border mt-2">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Consumers
+                  </span>
+                </div>
+                <div className="p-2 space-y-1">
+                  {consumers.map((consumer) => (
+                    <div
+                      key={consumer.queue}
+                      className="px-3 py-2 rounded-md text-sm flex items-center gap-2 text-muted-foreground"
+                    >
+                      <HugeiconsIcon icon={TaskDone01Icon} className="size-4" strokeWidth={2} />
+                      <span className="truncate">{consumer.queue}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </ScrollArea>
         </div>
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col min-w-0">
           {selectedQueue ? (
-            <div className="flex-1 p-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <HugeiconsIcon
-                      icon={Sent02Icon}
-                      className="size-4"
-                      strokeWidth={2}
-                    />
-                    Send Message to {selectedQueue}
-                  </CardTitle>
-                  <CardDescription>
-                    Send a test message to the queue. JSON will be parsed
-                    automatically.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <label className="text-xs font-medium">Message Body</label>
-                    <textarea
-                      value={messageBody}
-                      onChange={(e) => setMessageBody(e.target.value)}
-                      placeholder='{"type": "test", "data": "hello"}'
-                      className="mt-1 w-full min-h-[200px] p-3 rounded-lg border bg-background font-mono text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
-                    />
+            <div className="flex-1 overflow-auto p-6">
+              <div className="max-w-xl space-y-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <HugeiconsIcon icon={Sent02Icon} className="size-5 text-queues" strokeWidth={2} />
+                  <h3 className="text-base font-semibold">Send Message to {selectedQueue}</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Send a test message to the queue. JSON will be parsed automatically.
+                </p>
+
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Message Body</label>
+                  <textarea
+                    value={messageBody}
+                    onChange={(e) => setMessageBody(e.target.value)}
+                    placeholder='{"type": "test", "data": "hello"}'
+                    className="mt-1.5 w-full min-h-48 p-3 rounded-md border border-input bg-background font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+
+                {sendMessageMutation.isError && (
+                  <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                    {String(sendMessageMutation.error)}
                   </div>
+                )}
 
-                  {sendMessageMutation.isError && (
-                    <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-xs">
-                      {String(sendMessageMutation.error)}
-                    </div>
-                  )}
+                {sendMessageMutation.isSuccess && (
+                  <div className="p-3 rounded-md bg-green-500/10 border border-green-500/20 text-green-600 text-sm">
+                    Message sent successfully!
+                  </div>
+                )}
 
-                  {sendMessageMutation.isSuccess && (
-                    <div className="p-3 rounded-lg bg-green-500/10 text-green-600 text-xs">
-                      Message sent successfully!
-                    </div>
-                  )}
-
-                  <Button
-                    onClick={handleSendMessage}
-                    disabled={!messageBody.trim() || sendMessageMutation.isPending}
-                  >
-                    <HugeiconsIcon
-                      icon={Sent02Icon}
-                      className="size-4 mr-1"
-                      strokeWidth={2}
-                    />
-                    Send Message
-                  </Button>
-                </CardContent>
-              </Card>
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={!messageBody.trim() || sendMessageMutation.isPending}
+                >
+                  <HugeiconsIcon icon={Sent02Icon} className="size-4 mr-1.5" strokeWidth={2} />
+                  Send Message
+                </Button>
+              </div>
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-              Select a queue to send messages
-            </div>
+            <EmptyState
+              icon={TaskDone01Icon}
+              title="Select a queue"
+              description="Choose a queue from the sidebar to send messages"
+            />
           )}
         </div>
       </div>

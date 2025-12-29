@@ -96,15 +96,15 @@ LocalFlare uses [Miniflare](https://miniflare.dev) under the hood to run your Wo
 | Package | Description |
 |---------|-------------|
 | `localflare` | CLI tool |
-| `@localflare/core` | Miniflare wrapper and config parser |
-| `@localflare/server` | Dashboard API server |
-| `@localflare/dashboard` | React dashboard UI |
+| `localflare-core` | Miniflare wrapper and config parser |
+| `localflare-server` | Dashboard API server |
+| `localflare-dashboard` | React dashboard UI |
 
 ## Development
 
 ```bash
 # Clone the repo
-git clone https://github.com/localflare/localflare
+git clone https://github.com/rohanprasadofficial/localflare
 cd localflare
 
 # Install dependencies

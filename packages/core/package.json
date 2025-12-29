@@ -1,5 +1,5 @@
 {
-  "name": "@localflare/core",
+  "name": "localflare-core",
   "version": "0.0.1",
   "description": "Core Miniflare wrapper for LocalFlare",
   "type": "module",
@@ -37,5 +37,14 @@
     "local",
     "development"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rohanprasadofficial/localflare",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/rohanprasadofficial/localflare#readme",
+  "publishConfig": {
+    "access": "public"
+  }
 }

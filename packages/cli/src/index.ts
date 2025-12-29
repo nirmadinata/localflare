@@ -1,7 +1,7 @@
 import { cac } from 'cac'
 import pc from 'picocolors'
-import { LocalFlare } from '@localflare/core'
-import { startDashboardServer } from '@localflare/server'
+import { LocalFlare } from 'localflare-core'
+import { startDashboardServer } from 'localflare-server'
 import { existsSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
 import { createRequire } from 'node:module'
@@ -10,7 +10,7 @@ import { createRequire } from 'node:module'
 function getDashboardPath(): string | undefined {
   try {
     const require = createRequire(import.meta.url)
-    const dashboardPkg = require.resolve('@localflare/dashboard/package.json')
+    const dashboardPkg = require.resolve('localflare-dashboard/package.json')
     return join(dirname(dashboardPkg), 'dist')
   } catch {
     return undefined

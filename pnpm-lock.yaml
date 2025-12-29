@@ -20,18 +20,18 @@ importers:
 
   packages/cli:
     dependencies:
-      '@localflare/core':
-        specifier: workspace:*
-        version: link:../core
-      '@localflare/dashboard':
-        specifier: workspace:*
-        version: link:../dashboard
-      '@localflare/server':
-        specifier: workspace:*
-        version: link:../server
       cac:
         specifier: ^6.7.14
         version: 6.7.14
+      localflare-core:
+        specifier: workspace:*
+        version: link:../core
+      localflare-dashboard:
+        specifier: workspace:*
+        version: link:../dashboard
+      localflare-server:
+        specifier: workspace:*
+        version: link:../server
       picocolors:
         specifier: ^1.1.1
         version: 1.1.1
@@ -143,12 +143,12 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.19.7(hono@4.11.3)
-      '@localflare/core':
-        specifier: workspace:*
-        version: link:../core
       hono:
         specifier: ^4.6.14
         version: 4.11.3
+      localflare-core:
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20241218.0

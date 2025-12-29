@@ -8,7 +8,9 @@
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
     "clean": "turbo clean && rm -rf node_modules",
-    "playground": "pnpm --filter playground dev"
+    "playground": "pnpm --filter playground dev",
+    "release": "pnpm build && pnpm publish:packages",
+    "publish:packages": "pnpm --filter localflare-core publish --no-git-checks && pnpm --filter localflare-server publish --no-git-checks && pnpm --filter localflare-dashboard publish --no-git-checks && pnpm --filter localflare publish --no-git-checks"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

@@ -1,5 +1,5 @@
 {
-  "name": "@localflare/dashboard",
+  "name": "localflare-dashboard",
   "version": "0.0.1",
   "description": "Dashboard UI for LocalFlare",
   "type": "module",
@@ -43,5 +43,17 @@
     "dashboard",
     "ui"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rohanprasadofficial/localflare",
+    "directory": "packages/dashboard"
+  },
+  "homepage": "https://github.com/rohanprasadofficial/localflare#readme",
+  "publishConfig": {
+    "access": "public"
+  }
 }

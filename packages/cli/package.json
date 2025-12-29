@@ -16,9 +16,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@localflare/core": "workspace:*",
-    "@localflare/dashboard": "workspace:*",
-    "@localflare/server": "workspace:*",
+    "localflare-core": "workspace:*",
+    "localflare-dashboard": "workspace:*",
+    "localflare-server": "workspace:*",
     "cac": "^6.7.14",
     "picocolors": "^1.1.1"
   },
@@ -38,7 +38,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/localflare/localflare"
+    "url": "https://github.com/rohanprasadofficial/localflare"
   },
-  "homepage": "https://github.com/localflare/localflare#readme"
+  "homepage": "https://github.com/rohanprasadofficial/localflare#readme",
+  "publishConfig": {
+    "access": "public"
+  }
 }

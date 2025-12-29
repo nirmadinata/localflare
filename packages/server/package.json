@@ -1,5 +1,5 @@
 {
-  "name": "@localflare/server",
+  "name": "localflare-server",
   "version": "0.0.1",
   "description": "Dashboard API server for LocalFlare",
   "type": "module",
@@ -21,7 +21,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@localflare/core": "workspace:*",
+    "localflare-core": "workspace:*",
     "hono": "^4.6.14",
     "@hono/node-server": "^1.13.7"
   },
@@ -36,5 +36,14 @@
     "dashboard",
     "api"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rohanprasadofficial/localflare",
+    "directory": "packages/server"
+  },
+  "homepage": "https://github.com/rohanprasadofficial/localflare#readme",
+  "publishConfig": {
+    "access": "public"
+  }
 }

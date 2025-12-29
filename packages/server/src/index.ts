@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { serve } from '@hono/node-server'
-import type { LocalFlare } from '@localflare/core'
+import type { LocalFlare } from 'localflare-core'
 
 import { createD1Routes } from './routes/d1.js'
 import { createKVRoutes } from './routes/kv.js'

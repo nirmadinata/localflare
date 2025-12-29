@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import type { LocalFlare } from '@localflare/core'
+import type { LocalFlare } from 'localflare-core'
 
 export function createR2Routes(localflare: LocalFlare) {
   const app = new Hono()

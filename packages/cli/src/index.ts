@@ -370,6 +370,6 @@ cli.help((sections) => {
   })
   return sections
 })
-cli.version('0.2.0-beta.2')
+cli.version('0.2.0')
 
 cli.parse()

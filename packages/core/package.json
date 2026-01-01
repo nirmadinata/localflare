@@ -21,6 +21,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "tiny-jsonc": "^1.0.2",
     "toml": "^3.0.0"
   },
   "devDependencies": {

@@ -44,18 +44,21 @@ import { EditableDataTable } from './EditableDataTable'
 import { RowEditorDialog } from './RowEditorDialog'
 import { TableSchemaPanel } from './TableSchemaPanel'
 import { QueryHistory } from './QueryHistory'
-import { 
-  useD1TableInfo, 
+import {
+  useD1TableInfo,
   useD1AllTableSchemas,
-  usePagination, 
+  usePagination,
   useQueryHistory,
+  useTableSettings,
   d1QueryKeys,
+  type SortConfig,
 } from './hooks'
-import type { 
-  D1Row, 
-  D1CellValue, 
+import type {
+  D1Row,
+  D1CellValue,
   QueryHistoryEntry,
 } from './types'
+import type { SortingState } from '@tanstack/react-table'
 
 // ============================================================================
 // Main Component
@@ -75,10 +78,18 @@ export function D1Explorer() {
   const [showRowEditor, setShowRowEditor] = useState(false)
   const [editingRow, setEditingRow] = useState<D1Row | null>(null)
   const [showHistory, setShowHistory] = useState(false)
+  const [sortConfig, setSortConfig] = useState<SortConfig | null>(null)
+  const [serverSideSort, setServerSideSort] = useState(false)
 
   const queryClient = useQueryClient()
   const { pagination, updatePagination, goToPage, setPageSize } = usePagination(50)
   const { entries: historyEntries, addEntry: addHistoryEntry, clearHistory } = useQueryHistory()
+  const { settings, setServerSideSort: saveServerSideSort } = useTableSettings(selectedDb, selectedTable)
+
+  // Load server-side sort preference when table changes
+  useEffect(() => {
+    setServerSideSort(settings.serverSideSort)
+  }, [settings.serverSideSort, selectedDb, selectedTable])
 
   // ============================================================================
   // Queries
@@ -100,17 +111,26 @@ export function D1Explorer() {
   // Fetch detailed table info
   const { data: tableInfo, isLoading: loadingTableInfo } = useD1TableInfo(selectedDb, selectedTable)
 
-  // Fetch table rows
+  // Fetch table rows (with optional server-side sorting)
   const { data: tableData, isLoading: loadingTableData, refetch: refetchRows } = useQuery({
     queryKey: d1QueryKeys.tableRows(
-      selectedDb ?? '', 
-      selectedTable ?? '', 
-      pagination.pageIndex, 
-      pagination.pageSize
+      selectedDb ?? '',
+      selectedTable ?? '',
+      pagination.pageIndex,
+      pagination.pageSize,
+      serverSideSort ? sortConfig?.column : undefined,
+      serverSideSort ? sortConfig?.direction : undefined
     ),
-    queryFn: () => 
-      selectedDb && selectedTable 
-        ? d1Api.getRows(selectedDb, selectedTable, pagination.pageSize, pagination.pageIndex * pagination.pageSize)
+    queryFn: () =>
+      selectedDb && selectedTable
+        ? d1Api.getRows(
+            selectedDb,
+            selectedTable,
+            pagination.pageSize,
+            pagination.pageIndex * pagination.pageSize,
+            serverSideSort ? sortConfig?.column : undefined,
+            serverSideSort ? sortConfig?.direction : undefined
+          )
         : null,
     enabled: !!selectedDb && !!selectedTable,
   })
@@ -318,11 +338,31 @@ export function D1Explorer() {
 
   const handleRefresh = useCallback(() => {
     refetchRows()
-    queryClient.invalidateQueries({ 
-      queryKey: d1QueryKeys.tableInfo(selectedDb ?? '', selectedTable ?? '') 
+    queryClient.invalidateQueries({
+      queryKey: d1QueryKeys.tableInfo(selectedDb ?? '', selectedTable ?? '')
     })
     toast.success('Data refreshed')
   }, [refetchRows, queryClient, selectedDb, selectedTable])
+
+  // Handle sorting state change from table
+  const handleSortingChange = useCallback((sorting: SortingState) => {
+    if (sorting.length > 0) {
+      setSortConfig({
+        column: sorting[0].id,
+        direction: sorting[0].desc ? 'desc' : 'asc',
+      })
+    } else {
+      setSortConfig(null)
+    }
+  }, [])
+
+  // Handle server-side sort toggle
+  const handleServerSideSortChange = useCallback((enabled: boolean) => {
+    setServerSideSort(enabled)
+    saveServerSideSort(enabled)
+    // Reset to first page when toggling sort mode
+    goToPage(0)
+  }, [saveServerSideSort, goToPage])
 
   // ============================================================================
   // Schema for SQL autocomplete - fetches all table columns
@@ -570,6 +610,9 @@ export function D1Explorer() {
                   onRowDelete={handleRowDelete}
                   onRowEdit={handleRowEdit}
                   editable={true}
+                  serverSideSort={serverSideSort}
+                  onSortingChange={handleSortingChange}
+                  onServerSideSortChange={handleServerSideSortChange}
                 />
               ) : (
                 <EmptyState

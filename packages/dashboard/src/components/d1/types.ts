@@ -176,12 +176,26 @@ export interface ColumnSort {
 }
 
 /**
+ * Filter operator types
+ */
+export type FilterOperator = 'equals' | 'notEquals' | 'contains' | 'startsWith' | 'isNull' | 'isNotNull'
+
+/**
  * Column filter state
  */
 export interface ColumnFilter {
   columnId: string
   value: string
-  operator: 'equals' | 'contains' | 'startsWith' | 'endsWith' | 'isNull' | 'isNotNull'
+  operator: FilterOperator
+}
+
+/**
+ * Table settings for persistence (column widths, visibility, etc.)
+ */
+export interface TableSettings {
+  columnWidths: Record<string, number>
+  columnVisibility: Record<string, boolean>
+  serverSideSort: boolean
 }
 
 /**

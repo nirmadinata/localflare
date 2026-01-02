@@ -1,15 +1,19 @@
 /**
  * Editable Data Table Component
- * 
+ *
  * A full-featured data table built on TanStack Table with:
  * - Inline cell editing
  * - Row selection for bulk operations
- * - Sorting and filtering
+ * - Sorting (client-side and server-side)
+ * - Column resizing
+ * - Column visibility controls
+ * - Global search
+ * - Column-level filtering
  * - Pagination
  * - Responsive design
  */
 
-import { useMemo, useCallback, useState } from 'react'
+import { useMemo, useCallback, useState, useEffect } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -19,24 +23,50 @@ import {
   type ColumnDef,
   type SortingState,
   type RowSelectionState,
+  type VisibilityState,
+  type ColumnSizingState,
 } from '@tanstack/react-table'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowUp01Icon,
   ArrowDown01Icon,
+  ArrowUpDownIcon,
   Delete02Icon,
   Edit02Icon,
   Copy01Icon,
   Tick01Icon,
+  Search01Icon,
+  FilterIcon,
+  ViewIcon,
+  Cancel01Icon,
+  DatabaseIcon,
 } from '@hugeicons/core-free-icons'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { EditableCell } from './EditableCell'
-import type { D1Row, D1CellValue, D1TableSchema, PaginationState } from './types'
+import type { D1Row, D1CellValue, D1TableSchema, PaginationState, FilterOperator } from './types'
 
 // ============================================================================
 // Types
 // ============================================================================
+
+interface ColumnFilterConfig {
+  columnId: string
+  operator: FilterOperator
+  value: string
+}
 
 interface EditableDataTableProps {
   /** Table schema information */
@@ -57,8 +87,129 @@ interface EditableDataTableProps {
   onRowEdit?: (row: D1Row) => void
   /** Whether inline editing is enabled */
   editable?: boolean
+  /** Called when sorting changes (for server-side sorting) */
+  onSortingChange?: (sorting: SortingState) => void
+  /** Whether server-side sorting is enabled */
+  serverSideSort?: boolean
+  /** Called when server-side sort toggle changes */
+  onServerSideSortChange?: (enabled: boolean) => void
   /** Additional CSS classes */
   className?: string
+}
+
+// ============================================================================
+// Filter Operators Config
+// ============================================================================
+
+const FILTER_OPERATORS: { value: FilterOperator; label: string }[] = [
+  { value: 'equals', label: 'Equals' },
+  { value: 'notEquals', label: 'Not equals' },
+  { value: 'contains', label: 'Contains' },
+  { value: 'startsWith', label: 'Starts with' },
+  { value: 'isNull', label: 'Is null' },
+  { value: 'isNotNull', label: 'Is not null' },
+]
+
+// ============================================================================
+// Debounce Hook
+// ============================================================================
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay)
+    return () => clearTimeout(timer)
+  }, [value, delay])
+
+  return debouncedValue
+}
+
+// ============================================================================
+// Column Filter Popover Component
+// ============================================================================
+
+interface ColumnFilterPopoverProps {
+  columnId: string
+  columnName: string
+  filter: ColumnFilterConfig | undefined
+  onFilterChange: (filter: ColumnFilterConfig | null) => void
+}
+
+function ColumnFilterPopover({ columnId, columnName, filter, onFilterChange }: ColumnFilterPopoverProps) {
+  const [open, setOpen] = useState(false)
+  const [operator, setOperator] = useState<FilterOperator>(filter?.operator || 'contains')
+  const [value, setValue] = useState(filter?.value || '')
+
+  const handleApply = () => {
+    if (operator === 'isNull' || operator === 'isNotNull') {
+      onFilterChange({ columnId, operator, value: '' })
+    } else if (value.trim()) {
+      onFilterChange({ columnId, operator, value: value.trim() })
+    }
+    setOpen(false)
+  }
+
+  const handleClear = () => {
+    onFilterChange(null)
+    setOperator('contains')
+    setValue('')
+    setOpen(false)
+  }
+
+  const needsValue = operator !== 'isNull' && operator !== 'isNotNull'
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "p-0.5 rounded hover:bg-accent transition-colors",
+            filter && "text-primary"
+          )}
+          title={filter ? `Filtered: ${filter.operator} ${filter.value}` : 'Filter column'}
+        >
+          <HugeiconsIcon icon={FilterIcon} className="size-3" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-3" align="start">
+        <div className="space-y-3">
+          <div className="text-xs font-medium text-muted-foreground">
+            Filter: {columnName}
+          </div>
+
+          <select
+            value={operator}
+            onChange={(e) => setOperator(e.target.value as FilterOperator)}
+            className="w-full h-8 px-2 text-xs border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            {FILTER_OPERATORS.map(op => (
+              <option key={op.value} value={op.value}>{op.label}</option>
+            ))}
+          </select>
+
+          {needsValue && (
+            <Input
+              placeholder="Filter value..."
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              className="h-8 text-xs"
+              onKeyDown={(e) => e.key === 'Enter' && handleApply()}
+            />
+          )}
+
+          <div className="flex gap-2">
+            <Button size="sm" className="flex-1 h-7 text-xs" onClick={handleApply}>
+              Apply
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleClear}>
+              Clear
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 // ============================================================================
@@ -71,15 +222,15 @@ interface PaginationControlsProps {
   onPageSizeChange: (size: number) => void
 }
 
-function PaginationControls({ 
-  pagination, 
-  onPageChange, 
-  onPageSizeChange 
+function PaginationControls({
+  pagination,
+  onPageChange,
+  onPageSizeChange
 }: PaginationControlsProps) {
   const { pageIndex, pageSize, totalRows, totalPages } = pagination
   const startRow = pageIndex * pageSize + 1
   const endRow = Math.min((pageIndex + 1) * pageSize, totalRows)
-  
+
   return (
     <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/30">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -101,7 +252,7 @@ function PaginationControls({
           ))}
         </select>
       </div>
-      
+
       <div className="flex items-center gap-1">
         <Button
           variant="outline"
@@ -159,13 +310,13 @@ interface RowActionsProps {
 
 function RowActions({ row, onEdit, onDelete }: RowActionsProps) {
   const [copied, setCopied] = useState(false)
-  
+
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(JSON.stringify(row, null, 2))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }, [row])
-  
+
   return (
     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
       {onEdit && (
@@ -186,10 +337,10 @@ function RowActions({ row, onEdit, onDelete }: RowActionsProps) {
         onClick={handleCopy}
         title="Copy as JSON"
       >
-        <HugeiconsIcon 
-          icon={copied ? Tick01Icon : Copy01Icon} 
-          className={cn("size-3.5", copied && "text-green-500")} 
-          strokeWidth={2} 
+        <HugeiconsIcon
+          icon={copied ? Tick01Icon : Copy01Icon}
+          className={cn("size-3.5", copied && "text-green-500")}
+          strokeWidth={2}
         />
       </Button>
       {onDelete && (
@@ -208,6 +359,39 @@ function RowActions({ row, onEdit, onDelete }: RowActionsProps) {
 }
 
 // ============================================================================
+// Custom Filter Function
+// ============================================================================
+
+function applyColumnFilters(data: D1Row[], filters: ColumnFilterConfig[]): D1Row[] {
+  if (filters.length === 0) return data
+
+  return data.filter(row => {
+    return filters.every(filter => {
+      const cellValue = row[filter.columnId]
+      const strValue = cellValue == null ? '' : String(cellValue).toLowerCase()
+      const filterValue = filter.value.toLowerCase()
+
+      switch (filter.operator) {
+        case 'equals':
+          return strValue === filterValue
+        case 'notEquals':
+          return strValue !== filterValue
+        case 'contains':
+          return strValue.includes(filterValue)
+        case 'startsWith':
+          return strValue.startsWith(filterValue)
+        case 'isNull':
+          return cellValue == null
+        case 'isNotNull':
+          return cellValue != null
+        default:
+          return true
+      }
+    })
+  })
+}
+
+// ============================================================================
 // Main Component
 // ============================================================================
 
@@ -221,11 +405,27 @@ export function EditableDataTable({
   onRowDelete,
   onRowEdit,
   editable = true,
+  onSortingChange,
+  serverSideSort = false,
+  onServerSideSortChange,
   className,
 }: EditableDataTableProps) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
-  
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({})
+  const [globalFilter, setGlobalFilter] = useState('')
+  const [columnFilters, setColumnFilters] = useState<ColumnFilterConfig[]>([])
+
+  const debouncedGlobalFilter = useDebounce(globalFilter, 300)
+
+  // Notify parent of sorting changes for server-side sorting
+  useEffect(() => {
+    if (serverSideSort && onSortingChange) {
+      onSortingChange(sorting)
+    }
+  }, [sorting, serverSideSort, onSortingChange])
+
   // Get primary key column(s) for row identification
   const getRowId = useCallback((row: D1Row): string => {
     if (schema.primaryKeys.length === 0) {
@@ -236,7 +436,48 @@ export function EditableDataTable({
     }
     return schema.primaryKeys.map(pk => row[pk]).join('::')
   }, [schema.primaryKeys])
-  
+
+  // Apply column filters manually (client-side)
+  const filteredData = useMemo(() => {
+    let result = data
+
+    // Apply column filters
+    result = applyColumnFilters(result, columnFilters)
+
+    // Apply global filter
+    if (debouncedGlobalFilter) {
+      const search = debouncedGlobalFilter.toLowerCase()
+      result = result.filter(row =>
+        Object.values(row).some(val =>
+          val != null && String(val).toLowerCase().includes(search)
+        )
+      )
+    }
+
+    return result
+  }, [data, columnFilters, debouncedGlobalFilter])
+
+  // Handle column filter changes
+  const handleColumnFilterChange = useCallback((columnId: string, filter: ColumnFilterConfig | null) => {
+    setColumnFilters(prev => {
+      if (filter === null) {
+        return prev.filter(f => f.columnId !== columnId)
+      }
+      const existing = prev.findIndex(f => f.columnId === columnId)
+      if (existing >= 0) {
+        const updated = [...prev]
+        updated[existing] = filter
+        return updated
+      }
+      return [...prev, filter]
+    })
+  }, [])
+
+  // Get filter for a specific column
+  const getColumnFilter = useCallback((columnId: string) => {
+    return columnFilters.find(f => f.columnId === columnId)
+  }, [columnFilters])
+
   // Build columns from schema
   const columns = useMemo<ColumnDef<D1Row>[]>(() => {
     const cols: ColumnDef<D1Row>[] = [
@@ -260,39 +501,62 @@ export function EditableDataTable({
           />
         ),
         size: 40,
+        minSize: 40,
+        maxSize: 40,
         enableSorting: false,
+        enableResizing: false,
+        enableHiding: false,
       },
     ]
-    
+
     // Data columns
     for (const col of schema.columns) {
       const isPK = schema.primaryKeys.includes(col.name)
-      
+
       cols.push({
         id: col.name,
         accessorKey: col.name,
-        header: ({ column }) => (
-          <button
-            className="flex items-center gap-1 hover:text-foreground transition-colors"
-            onClick={() => column.toggleSorting()}
-          >
-            <span className={cn(isPK && 'text-primary')}>{col.name}</span>
-            {isPK && <span className="text-[9px] text-primary/60 ml-0.5">PK</span>}
-            <span className="text-[9px] text-muted-foreground/60 ml-1">
-              {col.type.toUpperCase()}
-            </span>
-            {column.getIsSorted() === 'asc' && (
-              <HugeiconsIcon icon={ArrowUp01Icon} className="size-3" />
-            )}
-            {column.getIsSorted() === 'desc' && (
-              <HugeiconsIcon icon={ArrowDown01Icon} className="size-3" />
-            )}
-          </button>
-        ),
+        header: ({ column }) => {
+          const sorted = column.getIsSorted()
+          return (
+            <div className="flex items-center gap-1.5">
+              <button
+                className="flex items-center gap-1 hover:text-foreground transition-colors group/sort"
+                onClick={() => column.toggleSorting()}
+                title={sorted ? `Sorted ${sorted}ending` : 'Click to sort'}
+              >
+                <span className={cn(isPK && 'text-primary')}>{col.name}</span>
+                {isPK && <span className="text-[9px] text-primary/60 ml-0.5">PK</span>}
+                <span className="text-[9px] text-muted-foreground/60 ml-1">
+                  {col.type.toUpperCase()}
+                </span>
+                {/* Sort indicator - always visible */}
+                <span className={cn(
+                  "inline-flex items-center justify-center size-4 rounded transition-colors",
+                  sorted ? "text-primary bg-primary/10" : "text-muted-foreground/40 group-hover/sort:text-muted-foreground group-hover/sort:bg-muted"
+                )}>
+                  {sorted === 'asc' ? (
+                    <HugeiconsIcon icon={ArrowUp01Icon} className="size-3" />
+                  ) : sorted === 'desc' ? (
+                    <HugeiconsIcon icon={ArrowDown01Icon} className="size-3" />
+                  ) : (
+                    <HugeiconsIcon icon={ArrowUpDownIcon} className="size-3" />
+                  )}
+                </span>
+              </button>
+              <ColumnFilterPopover
+                columnId={col.name}
+                columnName={col.name}
+                filter={getColumnFilter(col.name)}
+                onFilterChange={(filter) => handleColumnFilterChange(col.name, filter)}
+              />
+            </div>
+          )
+        },
         cell: ({ row }) => {
           const value = row.getValue(col.name) as D1CellValue
           const rowId = getRowId(row.original)
-          
+
           return (
             <EditableCell
               value={value}
@@ -306,9 +570,13 @@ export function EditableDataTable({
           )
         },
         enableSorting: true,
+        enableResizing: true,
+        enableHiding: true,
+        size: 150,
+        minSize: 80,
       })
     }
-    
+
     // Actions column
     cols.push({
       id: 'actions',
@@ -321,43 +589,60 @@ export function EditableDataTable({
         />
       ),
       size: 100,
+      minSize: 100,
+      maxSize: 100,
       enableSorting: false,
+      enableResizing: false,
+      enableHiding: false,
     })
-    
+
     return cols
-  }, [schema, editable, getRowId, onCellEdit, onRowDelete, onRowEdit])
-  
+  }, [schema, editable, getRowId, onCellEdit, onRowDelete, onRowEdit, getColumnFilter, handleColumnFilterChange])
+
   // Initialize table
   const table = useReactTable({
-    data,
+    data: filteredData,
     columns,
     state: {
       sorting,
       rowSelection,
+      columnVisibility,
+      columnSizing,
     },
     onSortingChange: setSorting,
     onRowSelectionChange: setRowSelection,
+    onColumnVisibilityChange: setColumnVisibility,
+    onColumnSizingChange: setColumnSizing,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    getSortedRowModel: serverSideSort ? undefined : getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getRowId: (row) => getRowId(row),
     enableRowSelection: true,
+    enableColumnResizing: true,
+    columnResizeMode: 'onChange',
   })
-  
+
   // Handle pagination
   const handlePageChange = useCallback((pageIndex: number) => {
     onPaginationChange({ pageIndex })
   }, [onPaginationChange])
-  
+
   const handlePageSizeChange = useCallback((pageSize: number) => {
     onPaginationChange({ pageSize, pageIndex: 0 })
   }, [onPaginationChange])
-  
+
+  // Clear all filters
+  const clearAllFilters = useCallback(() => {
+    setColumnFilters([])
+    setGlobalFilter('')
+  }, [])
+
   // Loading skeleton
   if (isLoading) {
     return (
       <div className={cn("border border-border rounded-lg overflow-hidden", className)}>
         <div className="animate-pulse">
+          <div className="h-12 bg-muted/50 border-b border-border" />
           <div className="h-10 bg-muted/50 border-b border-border" />
           {[...Array(5)].map((_, i) => (
             <div key={i} className="h-10 border-b border-border flex">
@@ -372,12 +657,88 @@ export function EditableDataTable({
       </div>
     )
   }
-  
-  // Selected rows toolbar
+
+  // Selected rows count
   const selectedCount = Object.keys(rowSelection).length
-  
+  const hasFilters = columnFilters.length > 0 || globalFilter.length > 0
+
   return (
     <div className={cn("border border-border rounded-lg overflow-hidden flex flex-col", className)}>
+      {/* Toolbar */}
+      <div className="px-4 py-2 border-b border-border bg-muted/30 flex items-center gap-3 flex-wrap">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[200px] max-w-[300px]">
+          <HugeiconsIcon
+            icon={Search01Icon}
+            className="size-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            placeholder="Search all columns..."
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            className="h-8 pl-8 text-xs"
+          />
+        </div>
+
+        {/* Column Visibility */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5">
+              <HugeiconsIcon icon={ViewIcon} className="size-3.5" />
+              Columns
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuLabel className="text-xs">Toggle columns</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {table
+              .getAllColumns()
+              .filter(column => column.getCanHide())
+              .map(column => (
+                <DropdownMenuCheckboxItem
+                  key={column.id}
+                  className="text-xs capitalize"
+                  checked={column.getIsVisible()}
+                  onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                >
+                  {column.id}
+                </DropdownMenuCheckboxItem>
+              ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Filter count badge */}
+        {hasFilters && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs gap-1.5"
+            onClick={clearAllFilters}
+          >
+            <HugeiconsIcon icon={FilterIcon} className="size-3.5" />
+            Filters ({columnFilters.length + (globalFilter ? 1 : 0)})
+            <HugeiconsIcon icon={Cancel01Icon} className="size-3" />
+          </Button>
+        )}
+
+        {/* Server-side sort toggle */}
+        {onServerSideSortChange && (
+          <div className="flex items-center gap-2 ml-auto">
+            <Checkbox
+              id="server-sort"
+              checked={serverSideSort}
+              onCheckedChange={(checked) => onServerSideSortChange(!!checked)}
+            />
+            <Label htmlFor="server-sort" className="text-xs text-muted-foreground cursor-pointer">
+              <span className="flex items-center gap-1">
+                <HugeiconsIcon icon={DatabaseIcon} className="size-3" />
+                Sort all data
+              </span>
+            </Label>
+          </div>
+        )}
+      </div>
+
       {/* Bulk actions toolbar */}
       {selectedCount > 0 && (
         <div className="px-4 py-2 bg-primary/10 border-b border-border flex items-center gap-3">
@@ -389,7 +750,6 @@ export function EditableDataTable({
             size="sm"
             className="h-7 text-xs text-destructive hover:text-destructive"
             onClick={() => {
-              // Handle bulk delete
               const selectedRows = table.getSelectedRowModel().rows
               selectedRows.forEach(row => onRowDelete?.(row.original))
               setRowSelection({})
@@ -408,10 +768,10 @@ export function EditableDataTable({
           </Button>
         </div>
       )}
-      
+
       {/* Table */}
       <div className="flex-1 overflow-auto">
-        <table className="w-full text-sm min-w-max">
+        <table className="w-full text-sm" style={{ minWidth: table.getCenterTotalSize() }}>
           <thead className="bg-muted/50 sticky top-0 z-10">
             {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id} className="border-b border-border">
@@ -419,13 +779,11 @@ export function EditableDataTable({
                   <th
                     key={header.id}
                     className={cn(
-                      "px-4 py-2.5 text-left text-xs font-medium text-muted-foreground whitespace-nowrap",
+                      "px-4 py-2.5 text-left text-xs font-medium text-muted-foreground whitespace-nowrap relative",
                       header.column.id === 'select' && 'w-10',
                       header.column.id === 'actions' && 'w-24',
                     )}
-                    style={{ 
-                      width: header.getSize() !== 150 ? header.getSize() : undefined 
-                    }}
+                    style={{ width: header.getSize() }}
                   >
                     {header.isPlaceholder
                       ? null
@@ -433,6 +791,28 @@ export function EditableDataTable({
                           header.column.columnDef.header,
                           header.getContext()
                         )}
+                    {/* Resize handle - always visible with clear affordance */}
+                    {header.column.getCanResize() && (
+                      <div
+                        onMouseDown={header.getResizeHandler()}
+                        onTouchStart={header.getResizeHandler()}
+                        onDoubleClick={() => header.column.resetSize()}
+                        className={cn(
+                          "absolute right-0 top-0 h-full w-4 cursor-col-resize select-none touch-none group/resize",
+                          "flex items-center justify-center",
+                          header.column.getIsResizing() && "bg-primary/10"
+                        )}
+                        title="Drag to resize, double-click to reset"
+                      >
+                        {/* Visual resize bar - always visible */}
+                        <div className={cn(
+                          "w-[3px] h-3/5 rounded-full transition-all",
+                          header.column.getIsResizing()
+                            ? "bg-primary"
+                            : "bg-muted-foreground/30 group-hover/resize:bg-primary"
+                        )} />
+                      </div>
+                    )}
                   </th>
                 ))}
               </tr>
@@ -441,17 +821,17 @@ export function EditableDataTable({
           <tbody className="bg-card divide-y divide-border">
             {table.getRowModel().rows.length === 0 ? (
               <tr>
-                <td 
-                  colSpan={columns.length} 
+                <td
+                  colSpan={columns.length}
                   className="px-4 py-12 text-center text-muted-foreground"
                 >
-                  No data in this table
+                  {hasFilters ? 'No matching data' : 'No data in this table'}
                 </td>
               </tr>
             ) : (
               table.getRowModel().rows.map(row => (
-                <tr 
-                  key={row.id} 
+                <tr
+                  key={row.id}
                   className={cn(
                     "group transition-colors hover:bg-muted/30",
                     row.getIsSelected() && "bg-primary/5"
@@ -465,6 +845,7 @@ export function EditableDataTable({
                         cell.column.id === 'select' && 'w-10',
                         cell.column.id === 'actions' && 'w-24',
                       )}
+                      style={{ width: cell.column.getSize() }}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
@@ -475,7 +856,7 @@ export function EditableDataTable({
           </tbody>
         </table>
       </div>
-      
+
       {/* Pagination */}
       <PaginationControls
         pagination={pagination}

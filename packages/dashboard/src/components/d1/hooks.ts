@@ -26,10 +26,17 @@ export const d1QueryKeys = {
   all: ['d1'] as const,
   databases: () => [...d1QueryKeys.all, 'databases'] as const,
   schema: (binding: string) => [...d1QueryKeys.all, 'schema', binding] as const,
-  tableInfo: (binding: string, table: string) => 
+  tableInfo: (binding: string, table: string) =>
     [...d1QueryKeys.all, 'table-info', binding, table] as const,
-  tableRows: (binding: string, table: string, page: number, pageSize: number) =>
-    [...d1QueryKeys.all, 'rows', binding, table, page, pageSize] as const,
+  tableRows: (
+    binding: string,
+    table: string,
+    page: number,
+    pageSize: number,
+    orderBy?: string,
+    orderDir?: 'asc' | 'desc'
+  ) =>
+    [...d1QueryKeys.all, 'rows', binding, table, page, pageSize, orderBy, orderDir] as const,
 }
 
 // ============================================================================
@@ -141,25 +148,36 @@ export function useD1TableInfo(binding: string | null, table: string | null) {
 // ============================================================================
 
 /**
- * Hook to fetch paginated table data
+ * Sort configuration for server-side sorting
+ */
+export interface SortConfig {
+  column: string
+  direction: 'asc' | 'desc'
+}
+
+/**
+ * Hook to fetch paginated table data with optional sorting
  */
 export function useD1TableRows(
   binding: string | null,
   table: string | null,
-  pagination: PaginationState
+  pagination: PaginationState,
+  sort?: SortConfig | null
 ) {
   const offset = pagination.pageIndex * pagination.pageSize
-  
+
   return useQuery({
     queryKey: d1QueryKeys.tableRows(
-      binding ?? '', 
-      table ?? '', 
-      pagination.pageIndex, 
-      pagination.pageSize
+      binding ?? '',
+      table ?? '',
+      pagination.pageIndex,
+      pagination.pageSize,
+      sort?.column,
+      sort?.direction
     ),
-    queryFn: () => 
-      binding && table 
-        ? d1Api.getRows(binding, table, pagination.pageSize, offset)
+    queryFn: () =>
+      binding && table
+        ? d1Api.getRows(binding, table, pagination.pageSize, offset, sort?.column, sort?.direction)
         : null,
     enabled: !!binding && !!table,
   })
@@ -478,15 +496,104 @@ export function useGetRowId(schema: D1TableSchema | null) {
 export function useColumnEditability(schema: D1TableSchema | null) {
   return useCallback((columnName: string): boolean => {
     if (!schema) return false
-    
+
     const column = schema.columns.find(c => c.name === columnName)
     if (!column) return false
-    
+
     // Auto-increment primary keys are not directly editable
     if (column.pk === 1 && column.type.toUpperCase() === 'INTEGER') {
       return false
     }
-    
+
     return true
   }, [schema])
+}
+
+// ============================================================================
+// Table Settings Persistence Hook
+// ============================================================================
+
+interface TableSettings {
+  columnWidths: Record<string, number>
+  columnVisibility: Record<string, boolean>
+  serverSideSort: boolean
+}
+
+const DEFAULT_TABLE_SETTINGS: TableSettings = {
+  columnWidths: {},
+  columnVisibility: {},
+  serverSideSort: false,
+}
+
+/**
+ * Hook to persist table settings (column widths, visibility) to localStorage
+ */
+export function useTableSettings(dbBinding: string | null, tableName: string | null) {
+  const storageKey = `localflare-d1-table-settings:${dbBinding}:${tableName}`
+
+  const [settings, setSettings] = useState<TableSettings>(() => {
+    if (typeof window === 'undefined' || !dbBinding || !tableName) {
+      return DEFAULT_TABLE_SETTINGS
+    }
+    try {
+      const stored = localStorage.getItem(storageKey)
+      return stored ? { ...DEFAULT_TABLE_SETTINGS, ...JSON.parse(stored) } : DEFAULT_TABLE_SETTINGS
+    } catch {
+      return DEFAULT_TABLE_SETTINGS
+    }
+  })
+
+  // Reset settings when table changes
+  const loadSettings = useCallback(() => {
+    if (typeof window === 'undefined' || !dbBinding || !tableName) {
+      setSettings(DEFAULT_TABLE_SETTINGS)
+      return
+    }
+    const key = `localflare-d1-table-settings:${dbBinding}:${tableName}`
+    try {
+      const stored = localStorage.getItem(key)
+      setSettings(stored ? { ...DEFAULT_TABLE_SETTINGS, ...JSON.parse(stored) } : DEFAULT_TABLE_SETTINGS)
+    } catch {
+      setSettings(DEFAULT_TABLE_SETTINGS)
+    }
+  }, [dbBinding, tableName])
+
+  // Save settings to localStorage
+  const saveSettings = useCallback((newSettings: Partial<TableSettings>) => {
+    if (typeof window === 'undefined' || !dbBinding || !tableName) return
+
+    setSettings(prev => {
+      const updated = { ...prev, ...newSettings }
+      const key = `localflare-d1-table-settings:${dbBinding}:${tableName}`
+      try {
+        localStorage.setItem(key, JSON.stringify(updated))
+      } catch {
+        // Ignore storage errors
+      }
+      return updated
+    })
+  }, [dbBinding, tableName])
+
+  // Update column widths
+  const setColumnWidths = useCallback((widths: Record<string, number>) => {
+    saveSettings({ columnWidths: widths })
+  }, [saveSettings])
+
+  // Update column visibility
+  const setColumnVisibility = useCallback((visibility: Record<string, boolean>) => {
+    saveSettings({ columnVisibility: visibility })
+  }, [saveSettings])
+
+  // Update server-side sort preference
+  const setServerSideSort = useCallback((enabled: boolean) => {
+    saveSettings({ serverSideSort: enabled })
+  }, [saveSettings])
+
+  return {
+    settings,
+    loadSettings,
+    setColumnWidths,
+    setColumnVisibility,
+    setServerSideSort,
+  }
 }

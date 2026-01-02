@@ -11,6 +11,14 @@ import { join, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import { parseWranglerConfig, type WranglerConfig, type LocalflareManifest } from 'localflare-core'
 
+/**
+ * Convert Windows paths to POSIX-style (forward slashes)
+ * This is needed because TOML interprets backslashes as escape sequences
+ */
+function toPosixPath(filePath: string): string {
+  return filePath.split('\\').join('/')
+}
+
 export type { LocalflareManifest }
 
 /**
@@ -75,7 +83,7 @@ export function generateShadowConfig(
 # DO NOT EDIT - This file is regenerated each time localflare runs
 
 name = "localflare-api"
-main = "${apiWorkerPath}"
+main = "${toPosixPath(apiWorkerPath)}"
 compatibility_date = "2024-12-01"
 
 [vars]

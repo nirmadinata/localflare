@@ -1,85 +1,431 @@
-import { useState } from "react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { HugeiconsIcon } from "@hugeicons/react"
+/**
+ * D1 Database Explorer
+ * 
+ * A comprehensive database management interface inspired by Drizzle Studio and Supabase.
+ * Provides full CRUD operations, SQL query execution, and schema visualization.
+ * 
+ * Features:
+ * - Database and table navigation
+ * - Inline cell editing with auto-save
+ * - Row creation and deletion
+ * - SQL query editor with syntax highlighting
+ * - Query history with re-run capability
+ * - Schema visualization
+ * - Bulk operations
+ */
+
+import { useState, useCallback, useEffect } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Database02Icon,
   PlayIcon,
   Table01Icon,
-  Delete02Icon,
-} from "@hugeicons/core-free-icons"
-import { d1Api } from "@/lib/api"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { PageHeader } from "@/components/ui/page-header"
-import { StatsCard, StatsCardGroup } from "@/components/ui/stats-card"
-import { DataTable, DataTableLoading, type Column } from "@/components/ui/data-table"
-import { EmptyState } from "@/components/ui/empty-state"
-import { cn } from "@/lib/utils"
+  Add01Icon,
+  RefreshIcon,
+  Settings02Icon,
+  CodeIcon,
+  Clock01Icon,
+} from '@hugeicons/core-free-icons'
+import { d1Api } from '@/lib/api'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { PageHeader } from '@/components/ui/page-header'
+import { StatsCard, StatsCardGroup } from '@/components/ui/stats-card'
+import { DataTableLoading } from '@/components/ui/data-table'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Toaster, toast } from '@/components/ui/toaster'
+import { cn } from '@/lib/utils'
+
+// D1 Component imports
+import { SQLEditor } from './SQLEditor'
+import { EditableDataTable } from './EditableDataTable'
+import { RowEditorDialog } from './RowEditorDialog'
+import { DummyDataGeneratorDialog } from './DummyDataGeneratorDialog'
+import { TableSchemaPanel } from './TableSchemaPanel'
+import { QueryHistory } from './QueryHistory'
+import { generateDummyRow, type ForeignKeyValues } from './dummy-data-generator'
+import {
+  useD1TableInfo,
+  useD1AllTableSchemas,
+  usePagination,
+  useQueryHistory,
+  d1QueryKeys,
+  type SortConfig,
+} from './hooks'
+import type {
+  D1Row,
+  D1CellValue,
+  QueryHistoryEntry,
+} from './types'
+import type { SortingState } from '@tanstack/react-table'
+
+// ============================================================================
+// Main Component
+// ============================================================================
 
 export function D1Explorer() {
+  // ============================================================================
+  // State
+  // ============================================================================
+  
   const [selectedDb, setSelectedDb] = useState<string | null>(null)
   const [selectedTable, setSelectedTable] = useState<string | null>(null)
-  const [sqlQuery, setSqlQuery] = useState("")
-  const [queryResult, setQueryResult] = useState<unknown[] | null>(null)
+  const [sqlQuery, setSqlQuery] = useState('')
+  const [queryResult, setQueryResult] = useState<D1Row[] | null>(null)
   const [queryError, setQueryError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'data' | 'query' | 'schema'>('data')
+  const [showRowEditor, setShowRowEditor] = useState(false)
+  const [editingRow, setEditingRow] = useState<D1Row | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
+  const [sortConfig, setSortConfig] = useState<SortConfig | null>(null)
+  const [serverSideSort, setServerSideSort] = useState(false)
+  const [showDummyDataDialog, setShowDummyDataDialog] = useState(false)
+  const [isGeneratingDummyData, setIsGeneratingDummyData] = useState(false)
+  const [dummyDataProgress, setDummyDataProgress] = useState(0)
 
   const queryClient = useQueryClient()
+  const { pagination, updatePagination, goToPage, setPageSize } = usePagination(50)
+  const { entries: historyEntries, addEntry: addHistoryEntry, clearHistory } = useQueryHistory()
 
+  // ============================================================================
+  // Queries
+  // ============================================================================
+
+  // Fetch databases
   const { data: databases, isLoading: loadingDatabases } = useQuery({
-    queryKey: ["d1-databases"],
+    queryKey: d1QueryKeys.databases(),
     queryFn: d1Api.list,
   })
 
+  // Fetch schema for selected database
   const { data: schema } = useQuery({
-    queryKey: ["d1-schema", selectedDb],
+    queryKey: d1QueryKeys.schema(selectedDb ?? ''),
     queryFn: () => (selectedDb ? d1Api.getSchema(selectedDb) : null),
     enabled: !!selectedDb,
   })
 
-  const { data: tableData, isLoading: loadingTableData } = useQuery({
-    queryKey: ["d1-table-data", selectedDb, selectedTable],
+  // Fetch detailed table info
+  const { data: tableInfo, isLoading: loadingTableInfo } = useD1TableInfo(selectedDb, selectedTable)
+
+  // Fetch table rows (with optional server-side sorting)
+  const { data: tableData, isLoading: loadingTableData, refetch: refetchRows } = useQuery({
+    queryKey: d1QueryKeys.tableRows(
+      selectedDb ?? '',
+      selectedTable ?? '',
+      pagination.pageIndex,
+      pagination.pageSize,
+      serverSideSort ? sortConfig?.column : undefined,
+      serverSideSort ? sortConfig?.direction : undefined
+    ),
     queryFn: () =>
-      selectedDb && selectedTable ? d1Api.getRows(selectedDb, selectedTable) : null,
+      selectedDb && selectedTable
+        ? d1Api.getRows(
+            selectedDb,
+            selectedTable,
+            pagination.pageSize,
+            pagination.pageIndex * pagination.pageSize,
+            serverSideSort ? sortConfig?.column : undefined,
+            serverSideSort ? sortConfig?.direction : undefined
+          )
+        : null,
     enabled: !!selectedDb && !!selectedTable,
   })
 
+  // Update pagination when table info changes
+  useEffect(() => {
+    if (tableInfo) {
+      updatePagination({ totalRows: tableInfo.rowCount })
+    }
+  }, [tableInfo, updatePagination])
+
+  // ============================================================================
+  // Mutations
+  // ============================================================================
+
+  // Execute SQL query
   const queryMutation = useMutation({
-    mutationFn: ({ sql }: { sql: string }) => {
-      if (!selectedDb) throw new Error("No database selected")
-      return d1Api.query(selectedDb, sql)
+    mutationFn: async ({ sql }: { sql: string }) => {
+      if (!selectedDb) throw new Error('No database selected')
+      const startTime = Date.now()
+      const result = await d1Api.query(selectedDb, sql)
+      return { ...result, duration: Date.now() - startTime }
     },
-    onSuccess: (data) => {
-      setQueryResult(data.results ?? [])
+    onSuccess: (data, variables) => {
+      setQueryResult((data.results as D1Row[]) ?? [])
       setQueryError(null)
-      queryClient.invalidateQueries({ queryKey: ["d1-table-data"] })
+      
+      // Add to history
+      addHistoryEntry({
+        sql: variables.sql,
+        database: selectedDb!,
+        success: true,
+        duration: data.meta?.duration,
+        rowCount: data.rowCount,
+      })
+      
+      // Invalidate table data if it was a mutation
+      const upperSql = variables.sql.trim().toUpperCase()
+      if (!upperSql.startsWith('SELECT') && !upperSql.startsWith('PRAGMA')) {
+        queryClient.invalidateQueries({ queryKey: ['d1'] })
+        toast.success('Query executed successfully', {
+          description: `${data.meta?.changes ?? 0} rows affected`,
+        })
+      }
     },
-    onError: (error) => {
-      setQueryError(String(error))
+    onError: (error, variables) => {
+      const errorMessage = String(error)
+      setQueryError(errorMessage)
       setQueryResult(null)
+      
+      // Add failed query to history
+      addHistoryEntry({
+        sql: variables.sql,
+        database: selectedDb!,
+        success: false,
+        error: errorMessage,
+      })
+      
+      toast.error('Query failed', { description: errorMessage })
     },
   })
 
-  const handleRunQuery = () => {
+  // Update cell
+  const updateCellMutation = useMutation({
+    mutationFn: async ({ 
+      rowId, 
+      column, 
+      value 
+    }: { 
+      rowId: string
+      column: string
+      value: D1CellValue 
+    }) => {
+      if (!selectedDb || !selectedTable) throw new Error('No table selected')
+      return d1Api.updateCell(selectedDb, selectedTable, rowId, column, value)
+    },
+    onSuccess: () => {
+      refetchRows()
+      toast.success('Cell updated')
+    },
+    onError: (error) => {
+      toast.error('Failed to update cell', { description: String(error) })
+    },
+  })
+
+  // Insert row
+  const insertRowMutation = useMutation({
+    mutationFn: async (data: Record<string, D1CellValue>) => {
+      if (!selectedDb || !selectedTable) throw new Error('No table selected')
+      return d1Api.insertRow(selectedDb, selectedTable, data as Record<string, unknown>)
+    },
+    onSuccess: () => {
+      setShowRowEditor(false)
+      setEditingRow(null)
+      queryClient.invalidateQueries({ 
+        queryKey: d1QueryKeys.tableInfo(selectedDb ?? '', selectedTable ?? '') 
+      })
+      refetchRows()
+      toast.success('Row inserted')
+    },
+    onError: (error) => {
+      toast.error('Failed to insert row', { description: String(error) })
+    },
+  })
+
+  // Update row
+  const updateRowMutation = useMutation({
+    mutationFn: async ({ 
+      rowId, 
+      data 
+    }: { 
+      rowId: string
+      data: Record<string, D1CellValue> 
+    }) => {
+      if (!selectedDb || !selectedTable) throw new Error('No table selected')
+      return d1Api.updateRow(selectedDb, selectedTable, rowId, data as Record<string, unknown>)
+    },
+    onSuccess: () => {
+      setShowRowEditor(false)
+      setEditingRow(null)
+      refetchRows()
+      toast.success('Row updated')
+    },
+    onError: (error) => {
+      toast.error('Failed to update row', { description: String(error) })
+    },
+  })
+
+  // Delete row
+  const deleteRowMutation = useMutation({
+    mutationFn: async (rowId: string) => {
+      if (!selectedDb || !selectedTable) throw new Error('No table selected')
+      return d1Api.deleteRow(selectedDb, selectedTable, rowId)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ 
+        queryKey: d1QueryKeys.tableInfo(selectedDb ?? '', selectedTable ?? '') 
+      })
+      refetchRows()
+      toast.success('Row deleted')
+    },
+    onError: (error) => {
+      toast.error('Failed to delete row', { description: String(error) })
+    },
+  })
+
+  // ============================================================================
+  // Handlers
+  // ============================================================================
+
+  const handleRunQuery = useCallback(() => {
     if (sqlQuery.trim()) {
       queryMutation.mutate({ sql: sqlQuery })
     }
-  }
+  }, [sqlQuery, queryMutation])
 
-  // Generate columns from data
-  const generateColumns = (rows: Record<string, unknown>[]): Column<Record<string, unknown>>[] => {
-    if (!rows.length) return []
-    return Object.keys(rows[0]).map((key) => ({
-      key,
-      header: key,
-      render: (value) =>
-        value === null ? (
-          <span className="text-muted-foreground italic text-xs">NULL</span>
-        ) : (
-          <span className="font-mono text-xs">{String(value)}</span>
-        ),
-    }))
-  }
+  const handleCellEdit = useCallback((rowId: string, columnId: string, value: D1CellValue) => {
+    updateCellMutation.mutate({ rowId, column: columnId, value })
+  }, [updateCellMutation])
+
+  const handleRowDelete = useCallback((row: D1Row) => {
+    if (!tableInfo) return
+    
+    // Get row ID from primary keys
+    let rowId: string
+    if (tableInfo.primaryKeys.length === 0) {
+      rowId = JSON.stringify(row)
+    } else if (tableInfo.primaryKeys.length === 1) {
+      rowId = String(row[tableInfo.primaryKeys[0]])
+    } else {
+      rowId = JSON.stringify(tableInfo.primaryKeys.map(pk => row[pk]))
+    }
+    
+    deleteRowMutation.mutate(rowId)
+  }, [tableInfo, deleteRowMutation])
+
+  const handleRowEdit = useCallback((row: D1Row) => {
+    setEditingRow(row)
+    setShowRowEditor(true)
+  }, [])
+
+  const handleRowSave = useCallback((data: Record<string, D1CellValue>) => {
+    if (editingRow && tableInfo) {
+      // Get row ID for update
+      let rowId: string
+      if (tableInfo.primaryKeys.length === 1) {
+        rowId = String(editingRow[tableInfo.primaryKeys[0]])
+      } else {
+        rowId = JSON.stringify(tableInfo.primaryKeys.map(pk => editingRow[pk]))
+      }
+      updateRowMutation.mutate({ rowId, data })
+    } else {
+      insertRowMutation.mutate(data)
+    }
+  }, [editingRow, tableInfo, updateRowMutation, insertRowMutation])
+
+  const handleHistorySelect = useCallback((entry: QueryHistoryEntry) => {
+    setSqlQuery(entry.sql)
+    if (entry.database !== selectedDb) {
+      setSelectedDb(entry.database)
+    }
+    setActiveTab('query')
+    setShowHistory(false)
+  }, [selectedDb])
+
+  const handleRefresh = useCallback(() => {
+    refetchRows()
+    queryClient.invalidateQueries({
+      queryKey: d1QueryKeys.tableInfo(selectedDb ?? '', selectedTable ?? '')
+    })
+    toast.success('Data refreshed')
+  }, [refetchRows, queryClient, selectedDb, selectedTable])
+
+  // Handle sorting state change from table
+  const handleSortingChange = useCallback((sorting: SortingState) => {
+    if (sorting.length > 0) {
+      setSortConfig({
+        column: sorting[0].id,
+        direction: sorting[0].desc ? 'desc' : 'asc',
+      })
+    } else {
+      setSortConfig(null)
+    }
+  }, [])
+
+  // Handle server-side sort toggle
+  const handleServerSideSortChange = useCallback((enabled: boolean) => {
+    setServerSideSort(enabled)
+    // Reset to first page when toggling sort mode
+    goToPage(0)
+  }, [goToPage])
+
+  // Handle dummy data generation
+  const handleGenerateDummyData = useCallback(async (count: number) => {
+    if (!tableInfo || !selectedDb) return
+
+    setIsGeneratingDummyData(true)
+    setDummyDataProgress(0)
+
+    try {
+      // Fetch existing values for foreign key columns
+      const foreignKeyValues: ForeignKeyValues = {}
+
+      if (tableInfo.foreignKeys?.length > 0) {
+        for (const fk of tableInfo.foreignKeys) {
+          try {
+            // Fetch some existing values from the referenced table
+            const result = await d1Api.query(
+              selectedDb,
+              `SELECT DISTINCT "${fk.to}" FROM "${fk.table}" LIMIT 100`
+            )
+            if (result.results && result.results.length > 0) {
+              foreignKeyValues[fk.from] = (result.results as Record<string, D1CellValue>[])
+                .map(row => row[fk.to])
+                .filter(v => v != null)
+            }
+          } catch {
+            // If we can't fetch FK values, we'll skip this FK column
+            console.warn(`Could not fetch FK values for ${fk.from} -> ${fk.table}.${fk.to}`)
+          }
+        }
+      }
+
+      for (let i = 0; i < count; i++) {
+        const row = generateDummyRow(tableInfo, foreignKeyValues)
+        await d1Api.insertRow(selectedDb, selectedTable!, row as Record<string, unknown>)
+        setDummyDataProgress(i + 1)
+      }
+
+      // Refresh data after all inserts
+      queryClient.invalidateQueries({
+        queryKey: d1QueryKeys.tableInfo(selectedDb ?? '', selectedTable ?? '')
+      })
+      refetchRows()
+
+      toast.success(`Generated ${count} row${count !== 1 ? 's' : ''}`, {
+        description: `Added to ${selectedTable}`,
+      })
+      setShowDummyDataDialog(false)
+    } catch (error) {
+      toast.error('Failed to generate data', { description: String(error) })
+    } finally {
+      setIsGeneratingDummyData(false)
+      setDummyDataProgress(0)
+    }
+  }, [tableInfo, selectedDb, selectedTable, queryClient, refetchRows])
+
+  // ============================================================================
+  // Schema for SQL autocomplete - fetches all table columns
+  // ============================================================================
+
+  const tableNames = schema?.tables?.map(t => t.name)
+  const { data: allTableSchemas } = useD1AllTableSchemas(selectedDb, tableNames)
+
+  // ============================================================================
+  // Render
+  // ============================================================================
 
   if (loadingDatabases) {
     return (
@@ -104,12 +450,13 @@ export function D1Explorer() {
           description="Add a D1 database binding to your wrangler.toml to get started"
           className="mt-8"
         />
+        <Toaster />
       </div>
     )
   }
 
   const tableCount = schema?.tables?.length ?? 0
-  const rowCount = tableData?.rows?.length ?? 0
+  const rowCount = tableInfo?.rowCount ?? 0
 
   return (
     <div className="h-full flex flex-col">
@@ -135,14 +482,14 @@ export function D1Explorer() {
             iconColor="text-muted-foreground"
             label="Tables"
             value={tableCount}
-            description={selectedDb ? `in ${selectedDb}` : "Select a database"}
+            description={selectedDb ? `in ${selectedDb}` : 'Select a database'}
           />
           <StatsCard
             icon={Table01Icon}
             iconColor="text-muted-foreground"
             label="Rows"
-            value={rowCount}
-            description={selectedTable ? `in ${selectedTable}` : "Select a table"}
+            value={rowCount.toLocaleString()}
+            description={selectedTable ? `in ${selectedTable}` : 'Select a table'}
           />
         </StatsCardGroup>
       </div>
@@ -150,158 +497,322 @@ export function D1Explorer() {
       <div className="flex-1 flex min-h-0">
         {/* Database & Table List */}
         <div className="w-56 border-r border-border flex flex-col bg-muted/30">
-          <div className="p-3 border-b border-border">
+          <div className="p-3 border-b border-border flex items-center justify-between">
             <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
               Databases
             </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => setShowHistory(!showHistory)}
+              title="Query History"
+            >
+              <HugeiconsIcon 
+                icon={Clock01Icon} 
+                className={cn("size-3.5", showHistory && "text-primary")} 
+                strokeWidth={2} 
+              />
+            </Button>
           </div>
+          
           <ScrollArea className="flex-1">
-            <div className="p-2 space-y-1">
-              {databases.databases.map((db) => (
-                <div key={db.binding}>
-                  <button
-                    onClick={() => {
-                      setSelectedDb(db.binding)
-                      setSelectedTable(null)
-                    }}
-                    className={cn(
-                      "w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors",
-                      selectedDb === db.binding
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <HugeiconsIcon
-                      icon={Database02Icon}
-                      className={cn("size-4", selectedDb === db.binding && "text-d1")}
-                      strokeWidth={2}
-                    />
-                    {db.binding}
-                  </button>
+            {showHistory ? (
+              <div className="p-2">
+                <QueryHistory
+                  entries={historyEntries}
+                  onSelect={handleHistorySelect}
+                  onClear={clearHistory}
+                  maxEntries={20}
+                />
+              </div>
+            ) : (
+              <div className="p-2 space-y-1">
+                {databases.databases.map((db) => (
+                  <div key={db.binding}>
+                    <button
+                      onClick={() => {
+                        setSelectedDb(db.binding)
+                        setSelectedTable(null)
+                        goToPage(0)
+                      }}
+                      className={cn(
+                        'w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors',
+                        selectedDb === db.binding
+                          ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      )}
+                    >
+                      <HugeiconsIcon
+                        icon={Database02Icon}
+                        className={cn('size-4', selectedDb === db.binding && 'text-d1')}
+                        strokeWidth={2}
+                      />
+                      {db.binding}
+                    </button>
 
-                  {selectedDb === db.binding && schema?.tables && (
-                    <div className="ml-3 mt-1 pl-3 border-l border-border space-y-0.5">
-                      {schema.tables.map((table) => (
-                        <button
-                          key={table.name}
-                          onClick={() => setSelectedTable(table.name)}
-                          className={cn(
-                            "w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 transition-colors",
-                            selectedTable === table.name
-                              ? "bg-accent text-accent-foreground font-medium"
-                              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                          )}
-                        >
-                          <HugeiconsIcon
-                            icon={Table01Icon}
-                            className="size-3"
-                            strokeWidth={2}
-                          />
-                          {table.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                    {selectedDb === db.binding && schema?.tables && (
+                      <div className="ml-3 mt-1 pl-3 border-l border-border space-y-0.5">
+                        {schema.tables.map((table) => (
+                          <button
+                            key={table.name}
+                            onClick={() => {
+                              setSelectedTable(table.name)
+                              goToPage(0)
+                            }}
+                            className={cn(
+                              'w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 transition-colors',
+                              selectedTable === table.name
+                                ? 'bg-accent text-accent-foreground font-medium'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                            )}
+                          >
+                            <HugeiconsIcon
+                              icon={Table01Icon}
+                              className="size-3"
+                              strokeWidth={2}
+                            />
+                            {table.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </ScrollArea>
         </div>
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col min-w-0">
-          <Tabs defaultValue="data" className="flex-1 flex flex-col">
-            <div className="border-b border-border px-4 bg-muted/30">
+          <Tabs 
+            value={activeTab} 
+            onValueChange={(v) => setActiveTab(v as 'data' | 'query' | 'schema')} 
+            className="flex-1 flex flex-col"
+          >
+            <div className="border-b border-border px-4 bg-muted/30 flex items-center justify-between">
               <TabsList className="h-11 bg-transparent p-0 gap-4">
                 <TabsTrigger
                   value="data"
                   className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-11 px-0"
                 >
+                  <HugeiconsIcon icon={Table01Icon} className="size-4 mr-1.5" strokeWidth={2} />
                   Data
                 </TabsTrigger>
                 <TabsTrigger
                   value="query"
                   className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-11 px-0"
                 >
+                  <HugeiconsIcon icon={CodeIcon} className="size-4 mr-1.5" strokeWidth={2} />
                   SQL Query
                 </TabsTrigger>
+                <TabsTrigger
+                  value="schema"
+                  className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-11 px-0"
+                >
+                  <HugeiconsIcon icon={Settings02Icon} className="size-4 mr-1.5" strokeWidth={2} />
+                  Schema
+                </TabsTrigger>
               </TabsList>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-2">
+                {activeTab === 'data' && selectedTable && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRefresh}
+                      className="h-8"
+                    >
+                      <HugeiconsIcon icon={RefreshIcon} className="size-4 mr-1.5" strokeWidth={2} />
+                      Refresh
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setEditingRow(null)
+                        setShowRowEditor(true)
+                      }}
+                      className="h-8"
+                    >
+                      <HugeiconsIcon icon={Add01Icon} className="size-4 mr-1.5" strokeWidth={2} />
+                      Add Row
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
 
+            {/* Data Tab */}
             <TabsContent value="data" className="flex-1 m-0 overflow-auto p-4">
-              {loadingTableData ? (
+              {loadingTableData || loadingTableInfo ? (
                 <DataTableLoading />
-              ) : selectedTable && tableData?.rows ? (
-                <DataTable
-                  columns={generateColumns(tableData.rows)}
+              ) : selectedTable && tableInfo && tableData?.rows ? (
+                <EditableDataTable
+                  schema={tableInfo}
                   data={tableData.rows}
-                  emptyIcon={Table01Icon}
-                  emptyTitle="No rows"
-                  emptyDescription="This table is empty"
-                  actions={() => (
-                    <Button variant="ghost" size="icon" className="size-7">
-                      <HugeiconsIcon icon={Delete02Icon} className="size-4 text-muted-foreground" strokeWidth={2} />
-                    </Button>
-                  )}
+                  pagination={pagination}
+                  onPaginationChange={(p) => {
+                    if (p.pageIndex !== undefined) goToPage(p.pageIndex)
+                    if (p.pageSize !== undefined) setPageSize(p.pageSize)
+                  }}
+                  onCellEdit={handleCellEdit}
+                  onRowDelete={handleRowDelete}
+                  onRowEdit={handleRowEdit}
+                  editable={true}
+                  serverSideSort={serverSideSort}
+                  onSortingChange={handleSortingChange}
+                  onServerSideSortChange={handleServerSideSortChange}
+                  onGenerateData={() => setShowDummyDataDialog(true)}
                 />
               ) : (
                 <EmptyState
                   icon={Table01Icon}
                   title="Select a table"
-                  description="Choose a table from the sidebar to view its data"
+                  description="Choose a table from the sidebar to view and edit its data"
                 />
               )}
             </TabsContent>
 
+            {/* Query Tab */}
             <TabsContent value="query" className="flex-1 m-0 flex flex-col">
               <div className="p-4 border-b border-border">
-                <div className="flex gap-2">
-                  <textarea
-                    value={sqlQuery}
-                    onChange={(e) => setSqlQuery(e.target.value)}
-                    placeholder="SELECT * FROM users LIMIT 10"
-                    className="flex-1 min-h-30 p-3 rounded-md border border-input bg-background font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
+                <SQLEditor
+                  value={sqlQuery}
+                  onChange={setSqlQuery}
+                  onExecute={handleRunQuery}
+                  schema={allTableSchemas}
+                  placeholder="Enter SQL query... (Ctrl/Cmd + Enter to execute)"
+                  disabled={!selectedDb}
+                  height="150px"
+                />
                 <div className="mt-3 flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">
-                    {selectedDb ? `Database: ${selectedDb}` : "Select a database first"}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-muted-foreground">
+                      {selectedDb ? `Database: ${selectedDb}` : 'Select a database first'}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/60 hidden sm:flex items-center gap-1">
+                      <kbd className="px-1.5 py-0.5 bg-muted rounded text-[9px] font-mono">⌘</kbd>
+                      <span>+</span>
+                      <kbd className="px-1.5 py-0.5 bg-muted rounded text-[9px] font-mono">Enter</kbd>
+                      <span className="ml-1">to run</span>
+                    </span>
+                  </div>
                   <Button
                     onClick={handleRunQuery}
                     disabled={!selectedDb || !sqlQuery.trim() || queryMutation.isPending}
                     size="sm"
                   >
                     <HugeiconsIcon icon={PlayIcon} className="size-4 mr-1.5" strokeWidth={2} />
-                    Run Query
+                    {queryMutation.isPending ? 'Running...' : 'Run Query'}
                   </Button>
                 </div>
               </div>
 
               <div className="flex-1 overflow-auto p-4">
                 {queryError && (
-                  <div className="p-4 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                  <div className="p-4 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm font-mono">
                     {queryError}
                   </div>
                 )}
                 {queryResult && (
-                  <>
-                    <DataTable
-                      columns={generateColumns(queryResult as Record<string, unknown>[])}
-                      data={queryResult as Record<string, unknown>[]}
-                      emptyTitle="No results"
-                      emptyDescription="Query returned no rows"
-                    />
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      {queryResult.length} row(s) returned
-                    </div>
-                  </>
+                  <div>
+                    {queryResult.length > 0 ? (
+                      <>
+                        <div className="border border-border rounded-lg overflow-hidden">
+                          <div className="overflow-auto max-h-125">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted/50 sticky top-0">
+                                <tr className="border-b border-border">
+                                  {Object.keys(queryResult[0]).map((key) => (
+                                    <th
+                                      key={key}
+                                      className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground"
+                                    >
+                                      {key}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody className="bg-card divide-y divide-border">
+                                {queryResult.map((row, i) => (
+                                  <tr key={i}>
+                                    {Object.values(row).map((value, j) => (
+                                      <td key={j} className="px-4 py-2 font-mono text-xs">
+                                        {value === null ? (
+                                          <span className="text-muted-foreground/60 italic">NULL</span>
+                                        ) : (
+                                          String(value)
+                                        )}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          {queryResult.length} row(s) returned
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">
+                        Query executed successfully. No rows returned.
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
+            </TabsContent>
+
+            {/* Schema Tab */}
+            <TabsContent value="schema" className="flex-1 m-0 overflow-auto p-4">
+              {loadingTableInfo ? (
+                <DataTableLoading />
+              ) : selectedTable && tableInfo ? (
+                <TableSchemaPanel schema={tableInfo} />
+              ) : (
+                <EmptyState
+                  icon={Settings02Icon}
+                  title="Select a table"
+                  description="Choose a table from the sidebar to view its schema"
+                />
+              )}
             </TabsContent>
           </Tabs>
         </div>
       </div>
+
+      {/* Row Editor Dialog */}
+      {tableInfo && (
+        <RowEditorDialog
+          open={showRowEditor}
+          onOpenChange={setShowRowEditor}
+          schema={tableInfo}
+          row={editingRow}
+          onSave={handleRowSave}
+          isSaving={insertRowMutation.isPending || updateRowMutation.isPending}
+        />
+      )}
+
+      {/* Dummy Data Generator Dialog */}
+      {tableInfo && (
+        <DummyDataGeneratorDialog
+          open={showDummyDataDialog}
+          onOpenChange={setShowDummyDataDialog}
+          schema={tableInfo}
+          onGenerate={handleGenerateDummyData}
+          isGenerating={isGeneratingDummyData}
+          progress={dummyDataProgress}
+        />
+      )}
+
+      <Toaster />
     </div>
   )
 }
+
+export default D1Explorer

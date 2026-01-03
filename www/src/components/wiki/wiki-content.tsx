@@ -122,6 +122,13 @@ export function WikiContent({ activeSection }: { activeSection: string }) {
     'quick-start': <QuickStartSection />,
     'configuration': <ConfigurationSection />,
 
+    // CLI Reference (moved up for visibility)
+    'cli': <CLISection />,
+    'cli-commands': <CLICommandsSection />,
+    'cli-attach-mode': <CLIAttachModeSection />,
+    'cli-options': <CLIOptionsSection />,
+    'cli-examples': <CLIExamplesSection />,
+
     // D1 Database
     'd1': <D1Section />,
     'd1-overview': <D1OverviewSection />,
@@ -153,14 +160,9 @@ export function WikiContent({ activeSection }: { activeSection: string }) {
     'queues-messages': <QueuesMessagesSection />,
     'queues-testing': <QueuesTestingSection />,
 
-    // CLI Reference
-    'cli': <CLISection />,
-    'cli-commands': <CLICommandsSection />,
-    'cli-options': <CLIOptionsSection />,
-    'cli-examples': <CLIExamplesSection />,
-
     // Advanced
     'advanced': <AdvancedSection />,
+    'requirements': <RequirementsSection />,
     'architecture': <ArchitectureSection />,
     'bindings': <BindingsSection />,
     'persistence': <PersistenceSection />,
@@ -199,8 +201,12 @@ function GettingStartedSection() {
         'Send test messages to Queues and monitor processing',
         'Zero configuration—reads your wrangler.toml automatically',
       ]} />
+      <Callout type="info">
+        <strong>Requirement:</strong> Localflare works with Cloudflare Worker projects that use <Code>wrangler dev</Code> for
+        local development. It runs alongside wrangler to access your bindings.
+      </Callout>
       <Callout type="tip">
-        Localflare uses Miniflare under the hood, ensuring 100% compatibility with the Cloudflare runtime.
+        Localflare uses a sidecar architecture, running alongside your worker with shared bindings for full compatibility.
       </Callout>
     </Section>
   );
@@ -234,7 +240,7 @@ yarn global add localflare`}</CodeBlock>
         headers={['Requirement', 'Version']}
         rows={[
           ['Node.js', '18.0.0 or higher'],
-          ['npm/pnpm/yarn', 'Latest version recommended'],
+          ['Wrangler', 'Latest version (installed automatically)'],
         ]}
       />
     </Section>
@@ -257,8 +263,8 @@ function QuickStartSection() {
           content: <Code>npx localflare</Code>
         },
         {
-          title: 'Open the dashboard',
-          content: 'Visit http://localhost:8788 in your browser'
+          title: 'Dashboard opens automatically',
+          content: 'The dashboard opens at studio.localflare.dev'
         },
       ]} />
 
@@ -266,21 +272,23 @@ function QuickStartSection() {
 npx localflare
 
 # Output:
-# ● Reading wrangler.toml...
-# ✓ Found 2 D1 databases, 3 KV namespaces, 1 R2 bucket
-# ✓ Worker running at http://localhost:8787
-# ✓ Dashboard at http://localhost:8788`}</CodeBlock>
+# ⚡ Localflare
+# Local Cloudflare Development Dashboard
+#
+# 👀 Detected: /path/to/wrangler.toml
+# 🔗 Linking bindings:
+#    - DB (D1)
+#    - CACHE (KV)
+#    - BUCKET (R2)
+#
+# ✓ Development environment is running!
+# YOUR APP:   http://localhost:8787
+# API:        http://localhost:8787/__localflare/*`}</CodeBlock>
 
       <Callout type="tip">
         Localflare automatically detects all bindings from your <Code>wrangler.toml</Code> file.
+        See <strong>CLI Commands</strong> for all options including <Code>attach</Code> mode for custom dev workflows.
       </Callout>
-
-      <H2>Existing Projects</H2>
-      <P>
-        If you have an existing project with data from <Code>wrangler dev</Code>, use the <Code>--persist</Code> flag
-        to preserve your data:
-      </P>
-      <CodeBlock title="Terminal">{`npx localflare --persist .wrangler/state/v3`}</CodeBlock>
     </Section>
   );
 }
@@ -299,31 +307,28 @@ function ConfigurationSection() {
       <CodeBlock title="Terminal">{`localflare ./path/to/wrangler.toml`}</CodeBlock>
 
       <H2>Port Configuration</H2>
-      <P>Change the default ports using CLI options:</P>
+      <P>Change the default worker port:</P>
       <CodeBlock title="Terminal">{`# Custom worker port
-localflare -p 3000
+localflare --port 3000`}</CodeBlock>
 
-# Custom dashboard port
-localflare -d 3001
+      <H2>Passing Wrangler Options</H2>
+      <P>Use <Code>--</Code> to pass options directly to wrangler:</P>
+      <CodeBlock title="Terminal">{`# Use a specific environment
+localflare -- --env staging
 
-# Both custom ports
-localflare -p 3000 -d 3001`}</CodeBlock>
+# Set environment variables
+localflare -- --var API_KEY:secret
+
+# Combine options
+localflare --port 9000 -- --env production`}</CodeBlock>
 
       <H2>Data Persistence</H2>
-      <P>By default, Localflare persists data to <Code>.localflare/</Code> in your project directory.</P>
-      <CodeBlock title="Terminal">{`# Custom persistence directory
-localflare --persist ./my-data`}</CodeBlock>
-
-      <H3>Existing Projects</H3>
       <P>
-        If you have an existing project using <Code>wrangler dev</Code>, use the <Code>--persist</Code> flag
-        to point to your existing Wrangler data:
+        Localflare uses the standard wrangler state directory at <Code>.wrangler/state/</Code>.
+        Your data persists automatically between sessions.
       </P>
-      <CodeBlock title="Terminal">{`# Use existing Wrangler data
-localflare --persist .wrangler/state/v3`}</CodeBlock>
       <Callout type="info">
-        Both Localflare and Wrangler use Miniflare under the hood, so storage formats are compatible.
-        Your existing KV, D1, R2, and Durable Object data will work seamlessly.
+        The <Code>.wrangler/</Code> directory is typically gitignored. Add it to your <Code>.gitignore</Code> if not already present.
       </Callout>
     </Section>
   );
@@ -790,10 +795,10 @@ function QueuesOverviewSection() {
 
       <H2>Features</H2>
       <List items={[
-        'View queue depth and message count',
-        'Send test messages',
+        'View configured queue bindings',
+        'Send test messages to queues',
         'Monitor processing in real-time',
-        'View message contents',
+        'Messages are processed by your consumer',
       ]} />
 
       <H2>Binding Configuration</H2>
@@ -805,6 +810,10 @@ binding = "MY_QUEUE"
 queue = "my-queue"
 max_batch_size = 10
 max_batch_timeout = 30`}</CodeBlock>
+
+      <Callout type="tip">
+        Unlike other tools, Localflare's sidecar architecture allows queue messages to actually be processed by your consumer code!
+      </Callout>
     </Section>
   );
 }
@@ -814,17 +823,16 @@ function QueuesMessagesSection() {
     <Section id="queues-messages">
       <H1>Message Viewer</H1>
       <P>
-        View messages in your queues and monitor processing.
+        View your queue bindings and send test messages.
       </P>
 
-      <H2>Message Information</H2>
+      <H2>Queue Information</H2>
       <Table
         headers={['Property', 'Description']}
         rows={[
-          ['ID', 'Unique message identifier'],
-          ['Body', 'Message content (JSON or text)'],
-          ['Timestamp', 'When the message was sent'],
-          ['Attempts', 'Number of delivery attempts'],
+          ['Binding', 'The binding name in your code'],
+          ['Queue', 'The queue name'],
+          ['Type', 'Producer or Consumer'],
         ]}
       />
     </Section>
@@ -840,9 +848,9 @@ function QueuesTestingSection() {
       </P>
 
       <Steps items={[
-        { title: 'Select a queue', content: 'Choose from your configured queues' },
+        { title: 'Select a queue', content: 'Choose from your configured producer bindings' },
         { title: 'Enter message body', content: 'JSON or plain text' },
-        { title: 'Click Send', content: 'Message is added to the queue' },
+        { title: 'Click Send', content: 'Message is sent to the queue' },
         { title: 'Monitor processing', content: 'Watch your consumer handle the message' },
       ]} />
 
@@ -851,6 +859,10 @@ function QueuesTestingSection() {
   "orderId": "12345",
   "items": ["item1", "item2"]
 }`}</CodeBlock>
+
+      <Callout type="info">
+        Because Localflare runs alongside your worker with shared bindings, your queue consumer will actually process these messages!
+      </Callout>
     </Section>
   );
 }
@@ -875,17 +887,117 @@ function CLICommandsSection() {
     <Section id="cli-commands">
       <H1>Commands</H1>
 
-      <H2>localflare</H2>
-      <P>Start the Localflare development server.</P>
-      <CodeBlock title="Terminal">{`localflare [configPath] [options]`}</CodeBlock>
+      <H2>localflare (default)</H2>
+      <P>Start the Localflare development server with your worker.</P>
+      <CodeBlock title="Terminal">{`localflare [configPath] [options] [-- wrangler-options]`}</CodeBlock>
 
       <H3>Arguments</H3>
       <Table
         headers={['Argument', 'Description']}
         rows={[
-          ['configPath', 'Path to wrangler.toml (optional, defaults to ./wrangler.toml)'],
+          ['configPath', 'Path to wrangler.toml (optional, auto-detected)'],
+          ['-- wrangler-options', 'Options to pass directly to wrangler'],
         ]}
       />
+
+      <Callout type="info">
+        This is the recommended way to use Localflare for standard Cloudflare Worker projects.
+        It runs <Code>wrangler dev</Code> under the hood with both your worker and the Localflare API.
+      </Callout>
+
+      <H2>localflare attach</H2>
+      <P>Run Localflare API alongside an existing dev server. See the <strong>Attach Mode</strong> section for details.</P>
+      <CodeBlock title="Terminal">{`localflare attach [configPath] [options]`}</CodeBlock>
+    </Section>
+  );
+}
+
+function CLIAttachModeSection() {
+  return (
+    <Section id="cli-attach-mode">
+      <H1>Attach Mode</H1>
+      <P>
+        Attach mode runs the Localflare API as a standalone worker, separate from your main dev server.
+        This is useful for projects with custom dev workflows that don't use <Code>wrangler dev</Code> directly.
+      </P>
+
+      <Callout type="warning">
+        <strong>Important:</strong> Both your dev server and Localflare must use the same <Code>.wrangler/state</Code> directory
+        to share data. This works automatically when both use the same project directory.
+      </Callout>
+
+      <H2>When to Use Attach Mode</H2>
+      <List items={[
+        <>Projects using <Code>opennext dev</Code> (Next.js on Workers)</>,
+        <>Projects using <Code>nuxt dev</Code> (Nuxt on Workers)</>,
+        'Projects with custom build/dev pipelines',
+        'When you need to run your dev server separately',
+        'When the default mode has compatibility issues with your setup',
+      ]} />
+
+      <H2>How It Works</H2>
+      <Steps items={[
+        {
+          title: 'Terminal 1: Your dev server',
+          content: <>Run your normal dev command: <Code>pnpm dev</Code>, <Code>opennext dev</Code>, <Code>wrangler dev</Code>, etc.</>
+        },
+        {
+          title: 'Terminal 2: Localflare attach',
+          content: <>Run <Code>npx localflare attach</Code> to start the API on port 8788</>
+        },
+        {
+          title: 'Shared state directory',
+          content: <>Both workers read/write to the same <Code>.wrangler/state</Code> directory</>
+        },
+        {
+          title: 'Dashboard connects',
+          content: 'The dashboard connects to the Localflare API on port 8788'
+        },
+      ]} />
+
+      <H2>Usage</H2>
+      <CodeBlock title="Terminal">{`# Terminal 1: Start your dev server
+pnpm dev
+# or: opennext dev
+# or: wrangler dev
+# or: nuxt dev
+
+# Terminal 2: Start Localflare API
+npx localflare attach
+
+# With custom port
+npx localflare attach --port 9000
+
+# With specific config
+npx localflare attach ./path/to/wrangler.toml`}</CodeBlock>
+
+      <H2>Options</H2>
+      <Table
+        headers={['Option', 'Description', 'Default']}
+        rows={[
+          ['-p, --port', 'Port for Localflare API', '8788'],
+          ['--no-open', "Don't open browser", 'false'],
+          ['--dev', 'Use local dashboard (localhost:5174)', 'false'],
+        ]}
+      />
+
+      <H2>Example: OpenNext Project</H2>
+      <CodeBlock title="Terminal">{`# Terminal 1
+cd my-nextjs-project
+opennext dev
+
+# Terminal 2
+cd my-nextjs-project
+npx localflare attach
+
+# Dashboard opens at studio.localflare.dev?port=8788
+# Your Next.js app runs at localhost:8787
+# Both share the same D1/KV/R2 data`}</CodeBlock>
+
+      <Callout type="tip">
+        The key requirement is that your dev server writes to <Code>.wrangler/state</Code> in the same
+        location. Most wrangler-based tools do this automatically.
+      </Callout>
     </Section>
   );
 }
@@ -899,13 +1011,25 @@ function CLIOptionsSection() {
         headers={['Option', 'Alias', 'Description', 'Default']}
         rows={[
           ['-p, --port', '-p', 'Worker port', '8787'],
-          ['-d, --dashboard-port', '-d', 'Dashboard port', '8788'],
-          ['--persist', '', 'Persistence directory', '.localflare'],
           ['-v, --verbose', '-v', 'Verbose output', 'false'],
+          ['--no-open', '', 'Don\'t open browser', 'false'],
+          ['--no-tui', '', 'Disable TUI output', 'false'],
+          ['--dev', '', 'Use local dashboard', 'false'],
           ['-h, --help', '-h', 'Display help', ''],
           ['--version', '', 'Display version', ''],
         ]}
       />
+
+      <H2>Passing Wrangler Options</H2>
+      <P>Use <Code>--</Code> to pass options to wrangler:</P>
+      <CodeBlock title="Terminal">{`# Use a specific environment
+localflare -- --env staging
+
+# Set environment variables
+localflare -- --var API_KEY:secret
+
+# Enable remote mode
+localflare -- --remote`}</CodeBlock>
     </Section>
   );
 }
@@ -921,14 +1045,20 @@ localflare
 # Custom config path
 localflare ./config/wrangler.toml
 
-# Custom ports
-localflare -p 3000 -d 3001
+# Custom port
+localflare --port 3000
 
 # Verbose output
 localflare -v
 
-# Custom persistence
-localflare --persist ./data`}</CodeBlock>
+# Don't open browser
+localflare --no-open
+
+# Use staging environment
+localflare -- --env staging
+
+# Combine options
+localflare --port 9000 --no-open -- --env production`}</CodeBlock>
     </Section>
   );
 }
@@ -942,8 +1072,86 @@ function AdvancedSection() {
     <Section id="advanced">
       <H1>Advanced Topics</H1>
       <P>
-        Deep dive into Localflare's architecture and advanced features.
+        Deep dive into Localflare's architecture, requirements, and advanced features.
       </P>
+    </Section>
+  );
+}
+
+function RequirementsSection() {
+  return (
+    <Section id="requirements">
+      <H1>Requirements & Compatibility</H1>
+      <P>
+        Localflare is designed for <strong>Cloudflare Workers projects</strong> that use wrangler
+        for local development. Understanding the requirements helps you get the most out of Localflare.
+      </P>
+
+      <H2>Core Requirement</H2>
+      <Callout type="warning">
+        <strong>Localflare requires wrangler dev</strong> - Your project must use <Code>wrangler dev</Code> (directly or indirectly)
+        for local development. Localflare runs alongside wrangler to access your Worker bindings.
+      </Callout>
+
+      <H2>Supported Project Types</H2>
+      <Table
+        headers={['Project Type', 'Support', 'Command']}
+        rows={[
+          ['Standard Cloudflare Workers', 'Full', 'npx localflare'],
+          ['Hono on Workers', 'Full', 'npx localflare'],
+          ['Remix on Workers', 'Full', 'npx localflare'],
+          ['Astro on Workers', 'Full', 'npx localflare'],
+          ['SvelteKit on Workers', 'Full', 'npx localflare'],
+          ['OpenNext (Next.js)', 'Attach Mode', 'npx localflare attach'],
+          ['Nuxt on Workers', 'Attach Mode', 'npx localflare attach'],
+          ['Custom wrangler setups', 'Attach Mode', 'npx localflare attach'],
+        ]}
+      />
+
+      <H2>Not Supported</H2>
+      <List items={[
+        <>Pure Node.js projects without Workers (use <Code>better-sqlite3</Code> directly)</>,
+        'Projects that only use Cloudflare in production (no local wrangler dev)',
+        'Projects using only remote/deployed Workers (no local development)',
+        <>Plain <Code>next dev</Code> or <Code>vite dev</Code> without wrangler integration</>,
+      ]} />
+
+      <H2>How to Check Compatibility</H2>
+      <P>Your project is compatible if:</P>
+      <List items={[
+        <>You have a <Code>wrangler.toml</Code>, <Code>wrangler.json</Code>, or <Code>wrangler.jsonc</Code> file</>,
+        <>Running <Code>wrangler dev</Code> starts your local development server</>,
+        'Your bindings (D1, KV, R2, etc.) work locally during development',
+      ]} />
+
+      <H2>Choosing the Right Mode</H2>
+      <H3>Default Mode (recommended for most projects)</H3>
+      <P>
+        Use default mode when your project uses <Code>wrangler dev</Code> as the main dev command,
+        or when your framework's dev command wraps wrangler internally.
+      </P>
+      <CodeBlock title="Terminal">{`# Your dev script uses wrangler dev
+npx localflare
+
+# Or if you normally run:
+# wrangler dev
+# Then just use localflare instead`}</CodeBlock>
+
+      <H3>Attach Mode (for custom dev workflows)</H3>
+      <P>
+        Use attach mode when your project has a custom dev command that runs wrangler differently,
+        or when you need to run your dev server and Localflare separately.
+      </P>
+      <CodeBlock title="Terminal">{`# Terminal 1: Your custom dev command
+pnpm dev  # or opennext dev, nuxt dev, etc.
+
+# Terminal 2: Localflare API
+npx localflare attach`}</CodeBlock>
+
+      <Callout type="tip">
+        If you're unsure which mode to use, try the default mode first. If it doesn't work
+        with your setup, switch to attach mode.
+      </Callout>
     </Section>
   );
 }
@@ -953,37 +1161,55 @@ function ArchitectureSection() {
     <Section id="architecture">
       <H1>Architecture</H1>
       <P>
-        Localflare runs as a single process that manages both your Worker and the dashboard.
+        Localflare uses a sidecar architecture, running an API worker alongside your worker in the same wrangler process.
       </P>
 
-      <CodeBlock title="Architecture Diagram">{`┌─────────────────────────────────────────┐
-│         Localflare (single process)      │
-│                                          │
-│  ┌────────────────────────────────────┐  │
-│  │         Miniflare Runtime          │  │
-│  │  ┌──────┐ ┌──────┐ ┌──────┐        │  │
-│  │  │  D1  │ │  KV  │ │  R2  │  ...   │  │
-│  │  └──────┘ └──────┘ └──────┘        │  │
-│  └────────────────────────────────────┘  │
-│                    │                     │
-│         ┌─────────┴─────────┐            │
-│         │  Shared Bindings  │            │
-│         └─────────┬─────────┘            │
-│                   │                      │
-│  ┌────────────────┴────────────────┐     │
-│  │  ┌──────────┐    ┌──────────┐   │     │
-│  │  │  Worker  │    │Dashboard │   │     │
-│  │  │  :8787   │    │  :8788   │   │     │
-│  │  └──────────┘    └──────────┘   │     │
-│  └─────────────────────────────────┘     │
-└──────────────────────────────────────────┘`}</CodeBlock>
+      <CodeBlock title="Architecture Diagram">{`Single wrangler dev Process
+├─────────────────────────────────────────┤
+│                                         │
+│  ┌─────────────┐    ┌─────────────────┐ │
+│  │ Your Worker │    │ Localflare API  │ │
+│  │  (port)     │◄───│ (/__localflare) │ │
+│  └─────────────┘    └─────────────────┘ │
+│         │                   │           │
+│         └─────────┬─────────┘           │
+│                   ▼                     │
+│         ┌─────────────────┐             │
+│         │ Shared Bindings │             │
+│         │ D1, KV, R2, DO  │             │
+│         │ Queues, Vars    │             │
+│         └─────────────────┘             │
+│                   │                     │
+│                   ▼                     │
+│         ┌─────────────────┐             │
+│         │ .wrangler/state │             │
+│         │ (persisted)     │             │
+│         └─────────────────┘             │
+└─────────────────────────────────────────┘
 
-      <H2>Key Components</H2>
+        ┌─────────────────────┐
+        │    Dashboard UI     │
+        │ studio.localflare.dev│
+        │                     │
+        │ Connects to:        │
+        │ localhost/__localflare│
+        └─────────────────────┘`}</CodeBlock>
+
+      <H2>Key Benefits</H2>
       <List items={[
-        'Miniflare Runtime: Provides the Cloudflare Workers runtime locally',
-        'Shared Bindings: D1, KV, R2, DO, Queues are shared between Worker and Dashboard',
-        'Worker Server: Your application running on port 8787',
-        'Dashboard Server: The Localflare UI on port 8788',
+        'Shared Bindings: Both workers access the same D1, KV, R2, and Queue instances',
+        'Queue Messages Work: Send messages that your consumer actually processes',
+        'Zero Code Changes: Your worker code stays completely untouched',
+        'Framework Agnostic: Works with any framework that runs on Workers',
+      ]} />
+
+      <H2>How It Works</H2>
+      <Steps items={[
+        { title: 'CLI detects wrangler.toml', content: 'Reads your binding configuration' },
+        { title: 'Generates shadow config', content: 'Creates .localflare/wrangler.toml with same binding IDs' },
+        { title: 'Spawns wrangler with both configs', content: 'wrangler dev -c .localflare/wrangler.toml -c wrangler.toml' },
+        { title: 'Bindings are shared', content: 'Same IDs = same instances in workerd' },
+        { title: 'API handles /__localflare/*', content: 'Proxies everything else to your worker' },
       ]} />
     </Section>
   );
@@ -994,7 +1220,7 @@ function BindingsSection() {
     <Section id="bindings">
       <H1>Supported Bindings</H1>
       <P>
-        Localflare supports all major Cloudflare bindings through Miniflare.
+        Localflare supports all major Cloudflare bindings through the sidecar architecture.
       </P>
 
       <Table
@@ -1004,12 +1230,8 @@ function BindingsSection() {
           ['KV', 'Full', 'Key browser, value editor, bulk operations'],
           ['R2', 'Full', 'File browser, upload/download, metadata'],
           ['Durable Objects', 'Full', 'Instance listing, state inspection'],
-          ['Queues', 'Full', 'Message viewer, send test messages'],
-          ['Service Bindings', 'Full', 'Inter-worker communication'],
-          ['Cache API', 'Full', 'Cache viewer'],
-          ['Hyperdrive', 'Full', 'Connection status'],
-          ['Vectorize', 'Limited', 'Basic operations'],
-          ['Workers AI', 'Mock', 'Mock responses'],
+          ['Queues', 'Full', 'Send messages (actually processed!)'],
+          ['Service Bindings', 'Full', 'Automatic proxying'],
         ]}
       />
     </Section>
@@ -1021,27 +1243,31 @@ function PersistenceSection() {
     <Section id="persistence">
       <H1>Data Persistence</H1>
       <P>
-        Localflare persists your local data between sessions.
+        Localflare uses wrangler's standard state directory for persistence.
       </P>
 
-      <H2>Default Location</H2>
-      <P>Data is stored in <Code>.localflare/</Code> in your project directory:</P>
-      <CodeBlock>{`.localflare/
-├── d1/           # D1 database files
-├── kv/           # KV namespace data
-├── r2/           # R2 bucket objects
-├── do/           # Durable Object state
-└── cache/        # Cache API data`}</CodeBlock>
+      <H2>Storage Location</H2>
+      <P>Data is stored in <Code>.wrangler/state/</Code> in your project directory:</P>
+      <CodeBlock>{`.wrangler/
+└── state/
+    └── v3/
+        ├── d1/           # D1 database files
+        ├── kv/           # KV namespace data
+        ├── r2/           # R2 bucket objects
+        └── do/           # Durable Object state`}</CodeBlock>
 
-      <H2>Custom Location</H2>
-      <CodeBlock title="Terminal">{`localflare --persist /path/to/data`}</CodeBlock>
+      <H2>Sharing Data with wrangler dev</H2>
+      <P>
+        Because Localflare uses the same state directory as wrangler, your data is shared
+        between <Code>localflare</Code> and <Code>wrangler dev</Code>.
+      </P>
 
       <H2>Clearing Data</H2>
-      <P>To start fresh, simply delete the persistence directory:</P>
-      <CodeBlock title="Terminal">{`rm -rf .localflare`}</CodeBlock>
+      <P>To start fresh, delete the state directory:</P>
+      <CodeBlock title="Terminal">{`rm -rf .wrangler/state`}</CodeBlock>
 
       <Callout type="tip">
-        Add <Code>.localflare/</Code> to your <Code>.gitignore</Code> to avoid committing local data.
+        The <Code>.wrangler/</Code> directory is typically gitignored by default.
       </Callout>
     </Section>
   );
@@ -1076,8 +1302,8 @@ function CommonIssuesSection() {
 
       <H3>"Port already in use"</H3>
       <List items={[
-        'Another process is using port 8787 or 8788',
-        'Use custom ports: localflare -p 3000 -d 3001',
+        'Another process is using port 8787',
+        'Use a custom port: localflare --port 3000',
         'Kill the process using the port: lsof -i :8787',
       ]} />
 
@@ -1088,11 +1314,11 @@ function CommonIssuesSection() {
         'Restart Localflare after config changes',
       ]} />
 
-      <H3>"D1 query fails"</H3>
+      <H3>"Wrangler exited with error"</H3>
       <List items={[
-        'Check SQL syntax',
-        'Verify table exists',
-        'Check column names match your schema',
+        'Check if wrangler dev works directly',
+        'Try running with --verbose for more details',
+        'Check for syntax errors in wrangler.toml',
       ]} />
     </Section>
   );
@@ -1105,14 +1331,44 @@ function FAQSection() {
 
       <H3>Can I use Localflare in production?</H3>
       <P>
-        No. Localflare is designed for local development only. It uses Miniflare to simulate
-        the Cloudflare runtime and should not be used in production environments.
+        No. Localflare is designed for local development only. It runs alongside wrangler dev
+        and should not be used in production environments.
       </P>
 
-      <H3>Does Localflare support all Cloudflare features?</H3>
+      <H3>Does Localflare modify my code?</H3>
       <P>
-        Localflare supports most Cloudflare Workers bindings through Miniflare. Some features
-        like Workers AI are mocked. See the Supported Bindings page for details.
+        No. Localflare never touches your code. It runs as a separate worker alongside yours
+        using wrangler's multi-config feature. Your worker runs exactly as it would with
+        <Code>wrangler dev</Code>.
+      </P>
+
+      <H3>Why can I send queue messages?</H3>
+      <P>
+        Localflare uses a sidecar architecture where both workers share the same binding instances.
+        When you send a queue message from the dashboard, it goes to the same in-memory queue
+        that your consumer is listening to.
+      </P>
+
+      <H3>Does it work with any framework?</H3>
+      <P>
+        Localflare works with any framework that uses <Code>wrangler dev</Code> for local development.
+        This includes Remix, SvelteKit, Astro, Hono, and plain Workers. For frameworks with custom
+        dev workflows like OpenNext (Next.js) or Nuxt, use <Code>localflare attach</Code> mode.
+      </P>
+
+      <H3>What is attach mode?</H3>
+      <P>
+        Attach mode runs the Localflare API as a separate process alongside your existing dev server.
+        Use it when your project has a custom dev command (like <Code>opennext dev</Code> or <Code>nuxt dev</Code>)
+        that doesn't use <Code>wrangler dev</Code> directly. Run your dev server in one terminal and
+        <Code>npx localflare attach</Code> in another.
+      </P>
+
+      <H3>Why doesn't Localflare work with my project?</H3>
+      <P>
+        Localflare requires <Code>wrangler dev</Code> because it accesses your bindings through wrangler's
+        local runtime. If your project doesn't use wrangler for local development (e.g., pure Node.js
+        with <Code>next dev</Code>), Localflare won't be able to access your Cloudflare bindings.
       </P>
 
       <H3>How do I update Localflare?</H3>

@@ -7,7 +7,7 @@ import {
   PlayIcon,
   CommandLineIcon,
 } from "@hugeicons/core-free-icons"
-import { logsApi, type LogEntry } from "@/lib/api"
+import { logsApi, getApiBase, type LogEntry } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { PageHeader } from "@/components/ui/page-header"
@@ -37,7 +37,7 @@ export function TailLogs() {
       eventSourceRef.current.close()
     }
 
-    const eventSource = new EventSource("/api/logs/stream")
+    const eventSource = new EventSource(`${getApiBase()}/logs/stream`)
     eventSourceRef.current = eventSource
 
     eventSource.addEventListener("log", (event) => {

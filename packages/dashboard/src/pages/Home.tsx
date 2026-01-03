@@ -80,6 +80,7 @@ export function Home() {
   const { data: bindings, isLoading, error } = useQuery({
     queryKey: ["bindings"],
     queryFn: bindingsApi.getAll,
+    retry: false,
   })
 
   const handleRetry = () => {

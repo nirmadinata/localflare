@@ -1,6 +1,6 @@
 {
   "name": "localflare",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Local development dashboard for Cloudflare Workers",
   "type": "module",
   "bin": {
@@ -16,24 +16,32 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "localflare-core": "workspace:*",
-    "localflare-dashboard": "workspace:*",
-    "localflare-server": "workspace:*",
     "cac": "^6.7.14",
-    "picocolors": "^1.1.1"
+    "ink": "^6.6.0",
+    "ink-spinner": "^5.0.0",
+    "localflare-api": "workspace:*",
+    "localflare-core": "workspace:*",
+    "open": "^10.1.0",
+    "picocolors": "^1.1.1",
+    "react": "^19.0.0"
   },
   "devDependencies": {
+    "@types/react": "^19.0.2",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2"
   },
   "keywords": [
     "cloudflare",
     "workers",
-    "miniflare",
+    "wrangler",
     "local",
     "development",
     "dashboard",
-    "cli"
+    "cli",
+    "d1",
+    "kv",
+    "r2",
+    "queues"
   ],
   "license": "MIT",
   "repository": {

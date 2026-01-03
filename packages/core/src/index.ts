@@ -1,7 +1,5 @@
-export { LocalFlare } from './localflare.js'
 export { parseWranglerConfig, discoverBindings, getBindingSummary, findWranglerConfig, WRANGLER_CONFIG_FILES } from './config.js'
 export type {
-  LocalFlareOptions,
   WranglerConfig,
   DiscoveredBindings,
   BindingInfo,
@@ -11,6 +9,5 @@ export type {
   DurableObjectBinding,
   QueueProducerConfig,
   QueueConsumerConfig,
-  WorkerLogEntry,
-  WorkerLogCallback,
+  LocalflareManifest,
 } from './types.js'

@@ -1,4 +1,29 @@
-const API_BASE = '/api'
+/**
+ * Get the API base URL.
+ * Uses /__localflare prefix to avoid conflicts with user's /api/* routes.
+ *
+ * - In hosted mode (studio.localflare.dev): API on localhost with port from URL
+ * - In local bundled mode: uses relative path
+ */
+export function getApiBase(): string {
+  // Check if we're on studio.localflare.dev or localhost:5174 (Dashboard Vite dev server)
+  const isHostedMode =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'studio.localflare.dev' ||
+      (window.location.hostname === 'localhost' && window.location.port === '5174'))
+
+  if (isHostedMode) {
+    // Hosted mode: API is on localhost with port from URL
+    const params = new URLSearchParams(window.location.search)
+    const port = params.get('port') || '8788'
+    return `http://localhost:${port}/__localflare`
+  }
+
+  // Local bundled mode: API is served from same origin
+  return '/__localflare'
+}
+
+const API_BASE = getApiBase()
 
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${endpoint}`, {
@@ -27,29 +52,55 @@ export const d1Api = {
   list: () => fetchApi<{ databases: D1Database[] }>('/d1'),
   getSchema: (binding: string) => fetchApi<{ tables: D1Table[] }>(`/d1/${binding}/schema`),
   getTableInfo: (binding: string, table: string) =>
-    fetchApi<{ table: string; columns: D1Column[]; rowCount: number }>(`/d1/${binding}/tables/${table}`),
-  getRows: (binding: string, table: string, limit = 100, offset = 0) =>
-    fetchApi<{ rows: Record<string, unknown>[]; meta: unknown }>(
-      `/d1/${binding}/tables/${table}/rows?limit=${limit}&offset=${offset}`
-    ),
+    fetchApi<{ 
+      table: string
+      columns: D1Column[]
+      primaryKeys: string[]
+      indexes: unknown[]
+      foreignKeys: unknown[]
+      rowCount: number 
+    }>(`/d1/${binding}/tables/${table}`),
+  getRows: (binding: string, table: string, limit = 100, offset = 0, sort?: string, dir?: 'asc' | 'desc') => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    if (sort) params.set('sort', sort)
+    if (dir) params.set('dir', dir)
+    return fetchApi<{ rows: Record<string, unknown>[]; meta: { limit: number; offset: number; duration?: number } }>(
+      `/d1/${binding}/tables/${table}/rows?${params}`
+    )
+  },
   query: (binding: string, sql: string, params: unknown[] = []) =>
-    fetchApi<{ success: boolean; results?: unknown[]; meta?: unknown }>(`/d1/${binding}/query`, {
+    fetchApi<{ success: boolean; results?: unknown[]; rowCount?: number; meta?: { changes?: number; last_row_id?: number; duration?: number } }>(`/d1/${binding}/query`, {
       method: 'POST',
       body: JSON.stringify({ sql, params }),
     }),
   insertRow: (binding: string, table: string, data: Record<string, unknown>) =>
-    fetchApi<{ success: boolean }>(`/d1/${binding}/tables/${table}/rows`, {
+    fetchApi<{ success: boolean; meta?: { changes?: number; last_row_id?: number; duration?: number } }>(`/d1/${binding}/tables/${table}/rows`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  updateRow: (binding: string, table: string, id: string, data: Record<string, unknown>) =>
-    fetchApi<{ success: boolean }>(`/d1/${binding}/tables/${table}/rows/${id}`, {
+  updateRow: (binding: string, table: string, rowId: string, data: Record<string, unknown>) =>
+    fetchApi<{ success: boolean; meta?: { changes?: number; duration?: number } }>(`/d1/${binding}/tables/${table}/rows/${encodeURIComponent(rowId)}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
-  deleteRow: (binding: string, table: string, id: string) =>
-    fetchApi<{ success: boolean }>(`/d1/${binding}/tables/${table}/rows/${id}`, {
+  updateCell: (binding: string, table: string, rowId: string, column: string, value: unknown) =>
+    fetchApi<{ success: boolean; meta?: { changes?: number; duration?: number } }>(`/d1/${binding}/tables/${table}/rows/${encodeURIComponent(rowId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ column, value }),
+    }),
+  deleteRow: (binding: string, table: string, rowId: string) =>
+    fetchApi<{ success: boolean; meta?: { changes?: number; duration?: number } }>(`/d1/${binding}/tables/${table}/rows/${encodeURIComponent(rowId)}`, {
       method: 'DELETE',
+    }),
+  bulkDelete: (binding: string, table: string, rowIds: (string | Record<string, unknown>)[]) =>
+    fetchApi<{ success: boolean; meta?: { changes?: number; rowsProcessed?: number } }>(`/d1/${binding}/tables/${table}/bulk-delete`, {
+      method: 'POST',
+      body: JSON.stringify({ rowIds }),
+    }),
+  bulkUpdate: (binding: string, table: string, rowIds: (string | Record<string, unknown>)[], data: Record<string, unknown>) =>
+    fetchApi<{ success: boolean; meta?: { changes?: number; rowsProcessed?: number } }>(`/d1/${binding}/tables/${table}/bulk-update`, {
+      method: 'POST',
+      body: JSON.stringify({ rowIds, data }),
     }),
 }
 
@@ -92,6 +143,13 @@ export const r2Api = {
   },
   getObjectMeta: (binding: string, key: string) =>
     fetchApi<R2Object>(`/r2/${binding}/objects/${encodeURIComponent(key)}/meta`),
+  getObjectUrl: (binding: string, key: string) =>
+    `${API_BASE}/r2/${binding}/objects/${encodeURIComponent(key)}`,
+  getObjectContent: async (binding: string, key: string) => {
+    const response = await fetch(`${API_BASE}/r2/${binding}/objects/${encodeURIComponent(key)}`)
+    if (!response.ok) throw new Error('Failed to fetch object')
+    return response
+  },
   deleteObject: (binding: string, key: string) =>
     fetchApi<{ success: boolean }>(`/r2/${binding}/objects/${encodeURIComponent(key)}`, {
       method: 'DELETE',
@@ -119,7 +177,7 @@ export const doApi = {
       body: JSON.stringify(options),
     }),
   fetch: async (binding: string, id: string, path: string, options?: RequestInit) => {
-    const response = await fetch(`/api/do/${binding}/${id}/fetch${path}`, {
+    const response = await fetch(`${API_BASE}/do/${binding}/${id}/fetch${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
